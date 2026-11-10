@@ -22,7 +22,9 @@
     "desktop:dist": "npm run build && node scripts/prepare-desktop.mjs && electron-builder --config electron-builder.config.cjs",
     "icons": "node scripts/gen-android-icons.mjs && node scripts/gen-platform-icons.mjs",
     "e2e:layout": "node tests/e2e/layout.mjs",
-    "e2e:formats": "node tests/e2e/formats.mjs"
+    "e2e:formats": "node tests/e2e/formats.mjs",
+    "e2e:touch": "node tests/e2e/touch.mjs",
+    "e2e:print": "node tests/e2e/print.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

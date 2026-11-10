@@ -16,6 +16,9 @@ import { ObjectLayer } from './objects';
 import { keyName } from '../util/keys';
 import { h } from '../ui/dom';
 
+/** Finger-sized hit radius of a touch selection handle, in CSS pixels. */
+const HANDLE_HIT = 22;
+
 export type Hit =
   | { area: 'corner' }
   | { area: 'colHeader'; c: number; border?: number }
@@ -66,6 +69,8 @@ export class Grid {
   pointRange: Range | null = null;
   touchMode = false;
   private tapInfo: { x: number; y: number; t: number; moved: boolean; id: number } | null = null;
+  /** Touch long-press that has fired and is waiting for the finger to lift (context menu) or drag (select a range). */
+  private pressSel: { cx: number; cy: number; hit: Hit } | null = null;
   private longPressTimer: any = null;
   private pinch: { d: number; z: number } | null = null;
   private touches = new Map<number, { x: number; y: number }>();
@@ -261,11 +266,14 @@ export class Grid {
     // fill handle (bottom-right corner of the active range)
     const fx = ar.x + ar.w, fy = ar.y + ar.h;
     const hs = this.touchMode ? 14 : 5;
-    if (this.app.prefs.fillHandle && sel.ranges.length === 1 && Math.abs(x - fx) <= hs && Math.abs(y - fy) <= hs) (out as any).fill = true;
-    else if (this.touchMode && this.app.prefs.touchHandles) {
-      if (Math.hypot(x - ar.x, y - ar.y) <= 16) (out as any).handle = 'start';
-      else if (Math.hypot(x - fx, y - fy) <= 16) (out as any).handle = 'end';
-    }
+    if (this.touchMode && this.app.prefs.touchHandles) {
+      // Touch: both corners are selection handles (the bottom-right one extends the range, it does
+      // not fill), with a finger-sized target. The nearer handle wins on a small range.
+      if (sel.ranges.length === 1 && !this.editing) {
+        const ds = Math.hypot(x - ar.x, y - ar.y), de = Math.hypot(x - fx, y - fy);
+        if (Math.min(ds, de) <= HANDLE_HIT) (out as any).handle = de <= ds ? 'end' : 'start';
+      }
+    } else if (this.app.prefs.fillHandle && sel.ranges.length === 1 && Math.abs(x - fx) <= hs && Math.abs(y - fy) <= hs) (out as any).fill = true;
     // selection edge (drag to move)
     if (!(out as any).fill && !this.touchMode) {
       const onV = (Math.abs(x - ar.x) <= 3 || Math.abs(x - (ar.x + ar.w)) <= 3) && y >= ar.y - 3 && y <= ar.y + ar.h + 3;
@@ -395,8 +403,13 @@ export class Grid {
     sc.addEventListener('pointermove', (e) => this.onPointerMove(e));
     sc.addEventListener('pointerup', (e) => this.onPointerUp(e));
     sc.addEventListener('pointercancel', (e) => this.onPointerUp(e, true));
+    // The scroller pans natively (touch-action: pan-x pan-y), so a finger drag that is meant to
+    // select has to claim the gesture here, or the browser starts scrolling and cancels the pointer.
+    // pointerdown runs before touchstart, so a handle or fill drag is already known by then.
+    sc.addEventListener('touchstart', (e) => { if (this.drag && e.cancelable) e.preventDefault(); }, { passive: false });
+    sc.addEventListener('touchmove', (e) => { if ((this.drag || this.pressSel) && e.cancelable) e.preventDefault(); }, { passive: false });
     sc.addEventListener('dblclick', (e) => this.onDblClick(e));
-    sc.addEventListener('contextmenu', (e) => { e.preventDefault(); if (this.touchMode && this.tapInfo) return; this.contextMenu(e.clientX, e.clientY); });
+    sc.addEventListener('contextmenu', (e) => { e.preventDefault(); if (this.touchMode && (this.tapInfo || this.pressSel || this.drag)) return; this.contextMenu(e.clientX, e.clientY); });
     sc.addEventListener('keydown', (e) => this.onKeyDown(e));
     sc.addEventListener('wheel', (e) => {
       if (e.ctrlKey || (this.app.prefs.zoomOnRoll && !e.shiftKey)) {
@@ -432,6 +445,8 @@ export class Grid {
         this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.zoom };
         clearTimeout(this.longPressTimer);
         this.tapInfo = null;
+        this.pressSel = null;
+        if (this.drag && (this.drag.kind === 'select' || this.drag.kind === 'handle' || this.drag.kind === 'rows' || this.drag.kind === 'cols')) this.drag = null;
         return;
       }
     }
@@ -446,17 +461,22 @@ export class Grid {
     // Touch: let the browser pan; decide on pointerup whether it was a tap.
     if (e.pointerType === 'touch' && !(hit.area === 'cell' && (hit.fill || hit.handle))) {
       this.tapInfo = { x, y, t: Date.now(), moved: false, id: e.pointerId };
+      this.pressSel = null;
       clearTimeout(this.longPressTimer);
       this.longPressTimer = setTimeout(() => {
         if (this.tapInfo && !this.tapInfo.moved) {
           const ht = this.hit(x, y);
-          if (ht.area === 'cell' && !this.inSelection(ht.r, ht.c)) this.select(ht.r, ht.c, { noScroll: true });
-          this.contextMenu(e.clientX, e.clientY);
-          this.tapInfo = null;
+          if (ht.area === 'cell' && !this.inSelection(ht.r, ht.c) && !this.editor.active) this.select(ht.r, ht.c, { noScroll: true });
+          if (this.editor.active || ht.area === 'corner') { this.contextMenu(e.clientX, e.clientY); this.tapInfo = null; return; }
+          // Press and hold, then either lift (context menu) or keep dragging (select a range).
+          this.pressSel = { cx: e.clientX, cy: e.clientY, hit: ht };
+          try { navigator.vibrate?.(12); } catch { /* */ }
         }
       }, 550);
       return;
     }
+    // A touch on a selection handle is still a tap until the finger moves.
+    if (e.pointerType === 'touch' && hit.area === 'cell' && hit.handle) { clearTimeout(this.longPressTimer); this.pressSel = null; this.tapInfo = { x, y, t: Date.now(), moved: false, id: e.pointerId }; }
     e.preventDefault();
     this.scroller.setPointerCapture(e.pointerId);
     const add = e.ctrlKey || e.metaKey;
@@ -519,7 +539,16 @@ export class Grid {
         return;
       }
       if (this.tapInfo && Math.hypot(x - this.tapInfo.x, y - this.tapInfo.y) > 8) { this.tapInfo.moved = true; clearTimeout(this.longPressTimer); }
+      if (this.pressSel && !this.drag && this.tapInfo?.moved) {
+        // Held, then dragged: select from the pressed cell (or row / column heading) to the finger.
+        const ht = this.pressSel.hit;
+        this.pressSel = null;
+        if (ht.area === 'cell') { this.select(ht.r, ht.c, { noScroll: true }); this.drag = { kind: 'select', anchor: { r: ht.r, c: ht.c }, add: false }; }
+        else if (ht.area === 'colHeader') { this.selectCols(ht.c, ht.c, false); this.drag = { kind: 'cols', anchor: ht.c, add: false }; }
+        else if (ht.area === 'rowHeader') { this.selectRows(ht.r, ht.r, false); this.drag = { kind: 'rows', anchor: ht.r, add: false }; }
+      }
       if (!this.drag) return;
+      if (this.drag.kind === 'handle' && this.tapInfo && !this.tapInfo.moved) return;
     }
     if (!this.drag) { this.updateCursor(x, y); return; }
     this.dragTo(x, y);
@@ -611,8 +640,13 @@ export class Grid {
       if (this.pinch) { if (this.touches.size < 2) { this.pinch = null; this.app.refresh(); } return; }
       clearTimeout(this.longPressTimer);
       const t = this.tapInfo;
+      const press = this.pressSel;
       this.tapInfo = null;
+      this.pressSel = null;
+      // A handle that was touched but not dragged is a tap on the cell underneath.
+      if (t && !t.moved && this.drag?.kind === 'handle') this.drag = null;
       if (t && !t.moved && !cancel && !this.drag) {
+        if (press) { this.contextMenu(press.cx, press.cy); return; }
         const { x, y } = this.local(e);
         this.onTap(x, y, e);
         return;

@@ -87,6 +87,14 @@ try {
   check('hold and lift opens the menu', await menuOpen(), true);
   await closeMenu();
 
+  // Press and hold the bottom-right handle, then drag: fills.
+  await p.evaluate(() => { ql.sheet.set(0, 5, { v: 7 }); ql.grid.select(0, 5); });
+  await wait(100);
+  await drag(await at(0, 5, 1, 1), await at(3, 5), { hold: 650 });
+  await wait(200);
+  check('hold handle and drag fills', await p.evaluate(() => [ql.sheet.value(1, 5), ql.sheet.value(3, 5)]), [7, 7]);
+  check('hold handle and drag shows no menu', await menuOpen(), false);
+
   // A plain drag still pans the sheet and leaves the selection alone.
   await tap(await at(2, 1));
   await drag(await at(20, 2), await at(8, 2), { steps: 20 });

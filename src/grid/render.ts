@@ -731,7 +731,10 @@ function paintSelection(g: Grid, ctx: CanvasRenderingContext2D, t: Theme): void 
   if (multi || act.r1 !== act.r2 || act.c1 !== act.c2) { ctx.strokeStyle = t.accent; ctx.strokeRect(Math.round(ac.x) + 0.5, Math.round(ac.y) + 0.5, Math.round(ac.w) - 1, Math.round(ac.h) - 1); }
   // Fill handle / touch handles
   if (!multi && !g.editing) {
-    if (g.touchMode && g.app.prefs.touchHandles) {
+    if (g.fillArmed) {
+      ctx.fillStyle = t.bg; ctx.fillRect(rc.x + rc.w - 7, rc.y + rc.h - 7, 14, 14);
+      ctx.fillStyle = t.accent; ctx.fillRect(rc.x + rc.w - 6, rc.y + rc.h - 6, 12, 12);
+    } else if (g.touchMode && g.app.prefs.touchHandles) {
       ctx.fillStyle = t.bg; ctx.strokeStyle = t.accent; ctx.lineWidth = 2;
       for (const [x, y] of [[rc.x, rc.y], [rc.x + rc.w, rc.y + rc.h]]) { ctx.beginPath(); ctx.arc(x, y, HANDLE_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
     } else if (g.app.prefs.fillHandle) {

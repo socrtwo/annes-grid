@@ -830,7 +830,7 @@ export class Shell {
       ['Everything is a command', 'Every feature of Anne\'s Grid is a command you can find with the search button (or Alt+Q), place on the Quick Access Bar, put on your own tab, assign a key, or record in a macro.'],
       ['Quick Access Bar', 'Tap ▾ at the end of the Quick Access Bar to add common commands, or choose More Commands… to pick from the full library. Long-press any ribbon button to add it. Options lets you move the bar to the bottom, near the keyboard.'],
       ['Cells and formulas', 'Type in a cell and press Enter. Start with = for a formula: click cells to insert references, and pick functions from the list as you type. Formulas that return several values spill into neighboring cells.'],
-      ['Touch', 'On a phone or tablet, tap to select, double-tap to edit, and drag either round handle to extend a selection. Or press and hold a cell, a row number or a column letter and then drag to select a range. Pinch to zoom, and press and hold then lift for the context menu.'],
+      ['Touch', 'On a phone or tablet, tap to select, double-tap to edit, and drag either round handle to extend a selection (press and hold the bottom-right handle first to fill instead). Or press and hold a cell, a row number or a column letter and then drag to select a range. Pinch to zoom, and press and hold then lift for the context menu.'],
       ['Files', 'Open and save .xlsx, .ods, .csv and more with the system file picker. Damaged workbooks are repaired on open; File ▸ Open ▸ Open and Repair forces it. Print or Save as PDF through the system print service.'],
     ];
     for (let i = 0; i < steps.length; i++) {

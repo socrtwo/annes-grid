@@ -71,6 +71,8 @@ export class Grid {
   private tapInfo: { x: number; y: number; t: number; moved: boolean; id: number } | null = null;
   /** Touch long-press that has fired and is waiting for the finger to lift (context menu) or drag (select a range). */
   private pressSel: { cx: number; cy: number; hit: Hit } | null = null;
+  /** Touch: the bottom-right handle was held and now fills instead of extending (drawn as the fill handle). */
+  fillArmed = false;
   private longPressTimer: any = null;
   private pinch: { d: number; z: number } | null = null;
   private touches = new Map<number, { x: number; y: number }>();
@@ -476,7 +478,20 @@ export class Grid {
       return;
     }
     // A touch on a selection handle is still a tap until the finger moves.
-    if (e.pointerType === 'touch' && hit.area === 'cell' && hit.handle) { clearTimeout(this.longPressTimer); this.pressSel = null; this.tapInfo = { x, y, t: Date.now(), moved: false, id: e.pointerId }; }
+    if (e.pointerType === 'touch' && hit.area === 'cell' && hit.handle) {
+      clearTimeout(this.longPressTimer); this.pressSel = null; this.tapInfo = { x, y, t: Date.now(), moved: false, id: e.pointerId };
+      // Press and hold the bottom-right handle, then drag: fill (the touch form of the fill handle).
+      if (hit.handle === 'end' && this.app.prefs.fillHandle) {
+        this.longPressTimer = setTimeout(() => {
+          if (this.tapInfo && !this.tapInfo.moved && this.drag?.kind === 'handle') {
+            this.drag = { kind: 'fill', src: { ...this.activeRange }, target: null };
+            this.fillArmed = true;
+            try { navigator.vibrate?.(12); } catch { /* */ }
+            this.invalidate();
+          }
+        }, 450);
+      }
+    }
     e.preventDefault();
     this.scroller.setPointerCapture(e.pointerId);
     const add = e.ctrlKey || e.metaKey;
@@ -635,6 +650,7 @@ export class Grid {
 
   private onPointerUp(e: PointerEvent, cancel = false): void {
     clearInterval(this.autoScrollTimer);
+    this.fillArmed = false;
     if (e.pointerType === 'touch') {
       this.touches.delete(e.pointerId);
       if (this.pinch) { if (this.touches.size < 2) { this.pinch = null; this.app.refresh(); } return; }

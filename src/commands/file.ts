@@ -310,7 +310,9 @@ def([
       app.ui.hideBackstage();
       const { preparePrint } = await import('../print/print');
       const cleanup = await preparePrint(app);
-      try { await printDocument(app.tab.displayName); } finally { setTimeout(cleanup, 800); }
+      // printDocument resolves when the print UI has closed; the print pages must stay until then,
+      // because the print UI lays the page out again each time its preview refreshes.
+      try { await printDocument(app.tab.displayName); } finally { setTimeout(cleanup, 300); }
     },
   },
   { id: 'file.quickPrint', label: 'Quick Print', icon: 'print', tab: 'Backstage', group: 'Print', noRecord: true, run: (app) => app.exec('file.print') },

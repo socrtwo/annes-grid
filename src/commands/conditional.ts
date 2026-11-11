@@ -11,6 +11,10 @@ import type { CFRule, CellStyle, Border } from '../model/types';
 import { ICON_SETS } from '../grid/cf';
 import { openDialog, toast, showMenu, confirmDialog, type Field, type DialogControl } from '../ui/dialog';
 import { h, icon, clear } from '../ui/dom';
+import { safeCssValue } from '../util/sanitize';
+
+/** A colour from a rule, which may come from an untrusted file, safe to put in inline CSS. */
+const safeColor = (c: unknown, fallback = '#000000'): string => safeCssValue(c, 60) ?? fallback;
 import { selRanges, activeCell, clipToUsed } from './ops';
 import { rangeName, parseRange, intersects, splitSheetRef, MAX_ROWS, MAX_COLS, type Range } from '../model/address';
 
@@ -198,20 +202,20 @@ export function describeRule(r: CFRule): string {
 
 /** Inline CSS that previews a rule's format. */
 export function previewCss(r: Partial<CFRule>): string {
-  if (r.type === 'colorScale') return `background:linear-gradient(90deg,${(r.colors || ['#f8696b', '#ffeb84', '#63be7b']).join(',')})`;
-  if (r.type === 'dataBar') return r.gradientBar === false ? `background:linear-gradient(90deg,${r.barColor || '#638ec6'} 70%,transparent 70%)` : `background:linear-gradient(90deg,${r.barColor || '#638ec6'},#ffffff 80%)`;
+  if (r.type === 'colorScale') return `background:linear-gradient(90deg,${(r.colors || ['#f8696b', '#ffeb84', '#63be7b']).map((c) => safeColor(c, 'transparent')).join(',')})`;
+  if (r.type === 'dataBar') { const bar = safeColor(r.barColor || '#638ec6', '#638ec6'); return r.gradientBar === false ? `background:linear-gradient(90deg,${bar} 70%,transparent 70%)` : `background:linear-gradient(90deg,${bar},#ffffff 80%)`; }
   return styleCss(r.style || {});
 }
 
 export function styleCss(st: Partial<CellStyle>): string {
   const parts: string[] = [];
-  if (st.fill) parts.push(`background:${st.fill}`);
-  if (st.color) parts.push(`color:${st.color}`);
+  if (st.fill) parts.push(`background:${safeColor(st.fill, 'transparent')}`);
+  if (st.color) parts.push(`color:${safeColor(st.color)}`);
   if (st.bold) parts.push('font-weight:700');
   if (st.italic) parts.push('font-style:italic');
   const deco = [st.underline ? 'underline' : '', st.strike ? 'line-through' : ''].filter(Boolean).join(' ');
   if (deco) parts.push(`text-decoration:${deco}`);
-  if (st.bt || st.bb || st.bl || st.br) parts.push(`border:1px solid ${(st.bt || st.bb || st.bl || st.br)!.color || '#000'}`);
+  if (st.bt || st.bb || st.bl || st.br) parts.push(`border:1px solid ${safeColor((st.bt || st.bb || st.bl || st.br)!.color || '#000')}`);
   return parts.join(';');
 }
 

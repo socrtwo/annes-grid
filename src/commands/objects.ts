@@ -10,7 +10,7 @@ import { newId } from '../model/workbook';
 import { openDialog, toast, colorMenu, THEME_COLORS, STANDARD_COLORS, alertDialog } from '../ui/dialog';
 import { h, pickFile, readFileAsDataURL, download, isPhone } from '../ui/dom';
 import { renderShapeSvg, shapeLabel, SHAPES, shapePreviewSvg, WORDART_STYLES } from '../charts/shapes';
-import { escHtml, isScriptUrl } from '../util/sanitize';
+import { escHtml, isScriptUrl, safeNum } from '../util/sanitize';
 import { quoteSheet } from '../model/address';
 
 export type AnyObj = { kind: 'chart'; def: ChartDef; sheet: Sheet } | { kind: 'drawing'; def: DrawingObject; sheet: Sheet };
@@ -363,8 +363,9 @@ async function editText(app: App, arg: any): Promise<void> {
     ],
     onChange: (v, ctl) => {
       const tmp: DrawingObject = { ...d, at: { ...d.at }, text: v.text, font: fontFrom(v, d) };
-      const k = Math.min(1, 320 / Math.max(1, d.at.w), 140 / Math.max(1, d.at.h));
-      ctl.setPreview(`<div style="width:${d.at.w * k}px;height:${d.at.h * k}px"><div style="transform:scale(${k});transform-origin:0 0;width:${d.at.w}px;height:${d.at.h}px">${renderShapeSvg(tmp)}</div></div>`);
+      const aw = safeNum(d.at.w, 200, 1, 20000), ah = safeNum(d.at.h, 120, 1, 20000);
+      const k = Math.min(1, 320 / aw, 140 / ah);
+      ctl.setPreview(`<div style="width:${aw * k}px;height:${ah * k}px"><div style="transform:scale(${k});transform-origin:0 0;width:${aw}px;height:${ah}px">${renderShapeSvg(tmp)}</div></div>`);
     },
   });
   if (!r) return;

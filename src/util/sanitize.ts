@@ -85,6 +85,15 @@ export function safeColor(c: unknown, fallback = '#000000'): string {
   return /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\)|[a-z]{3,20})$/i.test(s) ? s : fallback;
 }
 
+/**
+ * An image source from document data, or '' when it is not embedded data. Remote URLs are refused
+ * so that opening or printing a workbook cannot be used to call out to a server.
+ */
+export function safeImageSrc(src: unknown): string {
+  if (typeof src !== 'string' || !src) return '';
+  return /^(data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml)[;,]|blob:)/i.test(src) ? src : '';
+}
+
 /** A finite number from document data, clamped. */
 export function safeNum(v: unknown, fallback: number, min = -1e6, max = 1e6): number {
   const n = Number(v);

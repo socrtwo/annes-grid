@@ -186,14 +186,14 @@ export class Sheet {
     if (clone.id) this.id = clone.id;
     this.name = String(clone.name ?? this.name);
     this.cells = new Map((clone.cells || []).map(([k, v]: [number, Cell]) => [k, reviveCell(v)]));
-    this.colW = new Map(clone.colW || []); this.rowH = new Map(clone.rowH || []);
+    this.colW = sizeMap(clone.colW, 4000); this.rowH = sizeMap(clone.rowH, 4000);
     this.hiddenRows = new Set(clone.hiddenRows || []); this.hiddenCols = new Set(clone.hiddenCols || []);
     this.rowLevel = new Map(clone.rowLevel || []); this.colLevel = new Map(clone.colLevel || []);
     this.rowStyle = new Map(clone.rowStyle || []); this.colStyle = new Map(clone.colStyle || []);
     this.merges = clone.merges || []; this.freeze = clone.freeze || { rows: 0, cols: 0 }; this.split = clone.split || null;
     this.comments = new Map(clone.comments || []);
     this.validations = clone.validations || []; this.cf = clone.cf || []; this.filter = clone.filter || null;
-    this.tables = clone.tables || []; this.charts = clone.charts || []; this.drawings = clone.drawings || []; this.sparklines = clone.sparklines || [];
+    this.tables = clone.tables || []; this.charts = anchored(clone.charts); this.drawings = anchored(clone.drawings); this.sparklines = clone.sparklines || [];
     this.pivots = clone.pivots || []; this.scenarios = (clone.scenarios || []).map((x: Scenario) => ({ ...x, values: x.values.map(reviveScalar) }));
     this.print = { ...defaultPrint(), ...(clone.print || {}) };
     this.rowBreaks = clone.rowBreaks || []; this.colBreaks = clone.colBreaks || [];
@@ -201,10 +201,42 @@ export class Sheet {
     this.tabColor = clone.tabColor ?? null; this.visibility = clone.visibility || 'visible';
     this.showGrid = clone.showGrid ?? true; this.showHeadings = clone.showHeadings ?? true; this.showFormulas = !!clone.showFormulas;
     this.showZeros = clone.showZeros ?? true; this.rtl = !!clone.rtl;
-    this.defaultColW = clone.defaultColW || DEFAULT_COL_W; this.defaultRowH = clone.defaultRowH || DEFAULT_ROW_H;
-    this.zoom = clone.zoom || 1; this.gridColor = clone.gridColor ?? null; this.codeName = clone.codeName || '';
+    this.defaultColW = finite(clone.defaultColW, DEFAULT_COL_W, 1, 4000); this.defaultRowH = finite(clone.defaultRowH, DEFAULT_ROW_H, 1, 4000);
+    this.zoom = finite(clone.zoom, 1, 0.1, 5); this.gridColor = clone.gridColor ?? null; this.codeName = clone.codeName || '';
     this.background = clone.background ?? null; this.editRanges = clone.editRanges || [];
   }
+}
+
+// A workbook file is untrusted input: sizes and positions are interpolated into markup and CSS by
+// the renderers, so anything that should be a number is forced to be one when a file is loaded.
+function finite(v: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof v === 'number' ? v : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, n)) : fallback;
+}
+
+function sizeMap(entries: unknown, max: number): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!Array.isArray(entries)) return out;
+  for (const e of entries) {
+    if (!Array.isArray(e)) continue;
+    const k = e[0], v = e[1];
+    if (Number.isInteger(k) && k >= 0 && typeof v === 'number' && Number.isFinite(v) && v >= 0) out.set(k, Math.min(max, v));
+  }
+  return out;
+}
+
+function anchored<T extends { at: { r: number; c: number; dx: number; dy: number; w: number; h: number } }>(list: unknown): T[] {
+  if (!Array.isArray(list)) return [];
+  const num = (v: unknown, fb: number, min: number, max: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fb);
+  const out: T[] = [];
+  for (const o of list as any[]) {
+    if (!o || typeof o !== 'object') continue;
+    const a = o.at && typeof o.at === 'object' ? o.at : {};
+    o.at = { ...a, r: Math.trunc(num(a.r, 0, 0, 1048575)), c: Math.trunc(num(a.c, 0, 0, 16383)), dx: num(a.dx, 0, -1e5, 1e5), dy: num(a.dy, 0, -1e5, 1e5), w: num(a.w, 200, 1, 20000), h: num(a.h, 120, 1, 20000) };
+    if ('rotate' in o) o.rotate = num(o.rotate, 0, -3600, 3600);
+    out.push(o as T);
+  }
+  return out;
 }
 
 /** JSON round trip that keeps CellError values (serialized as {"#err": code}). */

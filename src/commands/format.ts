@@ -8,6 +8,7 @@ import { colorMenu, openDialog, toast, confirmDialog, THEME_COLORS, STANDARD_COL
 import { FONT_LIST } from '../fonts';
 import { MAX_COLS, MAX_ROWS, type Range } from '../model/address';
 import { h } from '../ui/dom';
+import { escHtml } from '../util/sanitize';
 
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 
@@ -345,7 +346,7 @@ def([
           { key: 'hn', type: 'heading', label: 'Number' },
           { key: 'cat', label: 'Category', type: 'select', options: cats, value: cats.includes(curCat) ? curCat : 'Custom', half: true },
           { key: 'fmt', label: 'Type (format code)', type: 'combo', options: allFormats, value: st.numFmt || 'General', half: true },
-          { key: 'sample', type: 'info', html: `<p class="ql-help">Sample: <b data-sample>${preview(st.numFmt || 'General')}</b></p>` },
+          { key: 'sample', type: 'info', html: `<p class="ql-help">Sample: <b data-sample>${escHtml(preview(st.numFmt || 'General'))}</b></p>` },
           { key: 'ha', type: 'heading', label: 'Alignment' },
           { key: 'hAlign', label: 'Horizontal', type: 'select', options: ['general', 'left', 'center', 'right', 'fill', 'justify', 'centerContinuous', 'distributed'], value: st.hAlign || 'general', half: true },
           { key: 'vAlign', label: 'Vertical', type: 'select', options: ['top', 'middle', 'bottom', 'justify', 'distributed'], value: st.vAlign || 'bottom', half: true },

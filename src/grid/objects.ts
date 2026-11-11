@@ -9,7 +9,7 @@ import { h, clear } from '../ui/dom';
 import { cellKey } from '../model/address';
 import { renderChartSvg } from '../charts/render';
 import { renderShapeSvg } from '../charts/shapes';
-import { sanitizeGeneratedHtml } from '../util/sanitize';
+import { safeImageSrc, sanitizeGeneratedHtml } from '../util/sanitize';
 
 type Obj = { kind: 'chart'; def: ChartDef } | { kind: 'drawing'; def: DrawingObject };
 
@@ -252,7 +252,7 @@ function commentContent(cm: CellComment): HTMLElement[] {
 
 function drawingContent(d: DrawingObject): HTMLElement {
   if (d.kind === 'image' || d.kind === 'signature') {
-    const img = h('img', { src: d.src || '', alt: d.alt || '', draggable: 'false' }) as HTMLImageElement;
+    const img = h('img', { src: safeImageSrc(d.src), alt: d.alt || '', draggable: 'false' }) as HTMLImageElement;
     img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = d.lockAspect === false ? 'fill' : 'contain';
     return img;
   }

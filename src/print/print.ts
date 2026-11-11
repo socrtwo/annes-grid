@@ -17,7 +17,7 @@ import { tableCellLook } from '../model/tableStyles';
 import { fontFamilyCss } from '../fonts';
 import { renderChartSvg } from '../charts/render';
 import { renderShapeSvg } from '../charts/shapes';
-import { escHtml, safeColor, sanitizeGeneratedHtml } from '../util/sanitize';
+import { escHtml, safeColor, safeImageSrc, safeNum, sanitizeGeneratedHtml } from '../util/sanitize';
 import { h, icon, clear, isPhone } from '../ui/dom';
 import { openDialog, toast } from '../ui/dialog';
 import { layoutPages, paperInches, parseHeaderFooter, headerFooterFor, objectExtent, contentRange, HEADING_W, HEADING_H, PAPER_SIZES, MARGIN_PRESETS, type PageSpec, type SheetPages, type HFContext, type HFRun } from './pages';
@@ -157,7 +157,7 @@ export function renderCellsTable(tab: BookTab, sheet: Sheet, rows: number[], col
   const gridCss = opts.grid ? 'border:0.5px solid #b7b7b7;' : '';
   out.push(`<table class="ql-pt" style="${escHtml(`width:${totalW}px;${fontCss({}, base, themeFont)}`)}"><colgroup>`);
   if (opts.headings) out.push(`<col style="width:${HEADING_W}px">`);
-  for (const c of cols) out.push(`<col style="width:${sheet.colWidth(c)}px">`);
+  for (const c of cols) out.push(`<col style="width:${safeNum(sheet.colWidth(c), 0, 0, 1e5)}px">`);
   out.push('</colgroup>');
   const headCss = `background:${opts.bw ? '#fff' : '#f0f0f0'};border:0.5px solid #999;font:8pt sans-serif;text-align:center;color:#333;padding:0;`;
   if (opts.headings) {
@@ -168,7 +168,7 @@ export function renderCellsTable(tab: BookTab, sheet: Sheet, rows: number[], col
   const occupied = (r: number, c: number) => { const x = sheet.get(r, c); return !!x && ((x.v != null && x.v !== '') || x.f != null); };
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    const rh = sheet.rowHeight(r);
+    const rh = safeNum(sheet.rowHeight(r), 0, 0, 1e5);
     out.push(`<tr style="height:${rh}px">`);
     if (opts.headings) out.push(`<th style="${headCss}">${r + 1}</th>`);
     for (let j = 0; j < cols.length; j++) {
@@ -281,10 +281,6 @@ function runCss(s: Partial<CellStyle>, bw: boolean): string {
 // --------------------------------------------------------------------------------------------
 // Pages
 
-function safeImageSrc(src: string | undefined): string {
-  if (!src) return '';
-  return /^(data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml)[;,]|blob:|https:)/i.test(src) ? src : '';
-}
 
 /** Charts and pictures that fall on the page body, positioned relative to its first cell. */
 function objectsHtml(src: PrintSource, sheet: Sheet, spec: PageSpec, bodyW: number, bodyH: number, draft: boolean): string {
@@ -314,7 +310,7 @@ function objectsHtml(src: PrintSource, sheet: Sheet, spec: PageSpec, bodyW: numb
       }
     } catch { continue; }
     const rot = o.kind === 'drawing' && o.d.rotate ? `transform:rotate(${Number(o.d.rotate) || 0}deg);` : '';
-    out.push(`<div class="ql-pt-obj" style="left:${x}px;top:${y}px;width:${at.w}px;height:${at.h}px;${rot}">${body}</div>`);
+    out.push(`<div class="ql-pt-obj" style="left:${safeNum(x, 0)}px;top:${safeNum(y, 0)}px;width:${safeNum(at.w, 0, 0)}px;height:${safeNum(at.h, 0, 0)}px;${rot}">${body}</div>`);
   }
   return out.join('');
 }

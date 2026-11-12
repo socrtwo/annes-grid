@@ -244,6 +244,7 @@ export function setHeaderRow(sheet: Sheet, t: TableDef, on: boolean): void {
 /** Renames a table and updates formulas that refer to it. */
 export function renameTable(book: Workbook, t: TableDef, name: string): void {
   const old = t.name;
+  book.recordBook(); // defined names are rewritten too, and they are not part of a cell or sheet record
   const re = new RegExp(`(^|[^A-Za-z0-9_.\\\\])${old.replace(/[.\\]/g, (m) => '\\' + m)}(?=\\[|\\b)`, 'gi');
   for (const sh of book.sheets) for (const [k, cell] of [...sh.cells]) {
     if (cell.f == null) continue;

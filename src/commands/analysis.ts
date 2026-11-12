@@ -634,6 +634,7 @@ async function writeOutput(app: App, out: ToolOutput, res: Record<string, any>, 
     if (occupied && !(await confirmDialog(tool, 'Output range will overwrite existing data. Press OK to overwrite.'))) return;
   }
   book.transact(tool, () => {
+    if (res.out === 'range') book.recordSheet(target); // the chart added below is part of the sheet, not of a cell
     if (res.out !== 'range') target = addSheetAfter(book, String(res.sheetName || '').trim() || tool.replace(/[:]/g, ''));
     writeMatrix(target, r0, c0, out.m as Matrix);
     for (const i of out.bold || []) out.m[i]?.forEach((v, j) => { if (v != null) { const cell = target.get(r0 + i, c0 + j); if (cell) target.set(r0 + i, c0 + j, { ...cell, s: book.derivedStyle(cell.s ?? 0, { bold: true }) }); } });

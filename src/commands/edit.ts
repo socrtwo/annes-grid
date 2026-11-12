@@ -4,7 +4,7 @@
  */
 import { def, getCommand } from './registry';
 import type { App } from '../app';
-import type { Sheet } from '../model/workbook';
+import { newId, type Sheet } from '../model/workbook';
 import type { Cell, CellComment, Scalar, DataValidation } from '../model/types';
 import { CellError, ERR } from '../model/types';
 import { cellKey, keyRow, keyCol, MAX_COLS, MAX_ROWS, parseRange, splitSheetRef, normRange, rangeName, cellName, type Range } from '../model/address';
@@ -128,7 +128,7 @@ def([
               const cur = s.get(r, c);
               s.set(r, c, { ...(cur?.s ? { s: cur.s } : {}), f: shiftFormula(p0.cell.f, r - arg.r, c - arg.c) });
             } else setInput(app, s, r, c, text);
-          }, { clip: false });
+          }, { clip: selRanges(app).some((x) => isWholeCols(x) || isWholeRows(x)) }); // whole rows and columns stop at the data
           return;
         }
         setInput(app, s, arg.r, arg.c, text);
@@ -537,7 +537,7 @@ def([
           for (const cf of src.sheet.cf) {
             if (!cf.ranges.some((x) => x.r1 <= src.range.r2 && x.r2 >= src.range.r1 && x.c1 <= src.range.c2 && x.c2 >= src.range.c1)) continue;
             s.book.recordSheet(s);
-            s.cf.push({ ...JSON.parse(JSON.stringify(cf)), id: 'cf' + Date.now().toString(36), ranges: [{ r1: dst.r1, c1: dst.c1, r2: Math.max(dst.r2, dst.r1 + h - 1), c2: Math.max(dst.c2, dst.c1 + w - 1) }] });
+            s.cf.push({ ...JSON.parse(JSON.stringify(cf)), id: newId('cf'), ranges: [{ r1: dst.r1, c1: dst.c1, r2: Math.max(dst.r2, dst.r1 + h - 1), c2: Math.max(dst.c2, dst.c1 + w - 1) }] });
           }
         });
         if (!src.sticky) { a.painter = null; app.ui.status(''); }
@@ -588,6 +588,8 @@ def([
         return;
       }
       if (rg.r1 === rg.r2) { if (rg.r1 === 0) return; rg = { ...rg, r1: rg.r1 - 1 }; }
+      // A whole column is filled down to the end of the data, not to the last row of the sheet.
+      if (rg.r2 >= MAX_ROWS - 1) rg = { ...rg, r2: Math.max(rg.r1 + 1, clipToUsed(s, rg).r2) };
       app.book.transact('Fill Down', () => fillRange(app, s, { ...rg, r2: rg.r1 }, rg, true));
     },
   },
@@ -983,11 +985,14 @@ def([
         case 'text': selectCells(app, (c) => !!c && typeof c.v === 'string', sel); break;
         case 'logicals': selectCells(app, (c) => !!c && typeof c.v === 'boolean', sel); break;
         case 'blanks': {
-          const area = sel || s.usedRange();
-          if (!area) return;
+          const area0 = sel || s.usedRange();
+          if (!area0) return;
+          // Blanks are looked for within the data: beyond it every cell is blank.
+          const area = clipToUsed(s, area0);
           const runs: Range[] = [];
           for (let rr = area.r1; rr <= area.r2; rr++) for (let cc = area.c1; cc <= area.c2; cc++) { const v = s.get(rr, cc); if (!v || (v.v == null && v.f == null)) { const last = runs[runs.length - 1]; if (last && last.r1 === rr && last.c2 + 1 === cc) last.c2 = cc; else runs.push({ r1: rr, c1: cc, r2: rr, c2: cc }); } }
           if (!runs.length) { toast('No cells were found.'); return; }
+          if (runs.length > 5000) { runs.length = 5000; toast('Only the first 5,000 blank areas were selected.'); }
           s.sel.ranges = runs; s.sel.r = runs[0].r1; s.sel.c = runs[0].c1; app.grid.invalidate();
           break;
         }

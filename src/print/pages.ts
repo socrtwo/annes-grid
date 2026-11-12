@@ -289,6 +289,8 @@ export function parseHeaderFooter(src: string, ctx: HFContext): HFRun[] {
     if (nx === 'K') {
       const m = /^[0-9A-Fa-f]{6}/.exec(src.slice(i + 2));
       if (m) { setFmt({ color: '#' + m[0].toLowerCase() }); i += 2 + 6; continue; }
+      // A theme colour (&K01+000: theme index, then tint) is not a literal colour: it is taken out, not printed as text.
+      if (/^\d\d[+-]\d{3}/.test(src.slice(i + 2))) { i += 2 + 6; continue; }
       i += 2; continue;
     }
     const up = nx.toUpperCase();

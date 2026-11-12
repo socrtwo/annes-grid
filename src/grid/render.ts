@@ -203,7 +203,10 @@ function paintCells(g: Grid, ctx: CanvasRenderingContext2D, t: Theme, r1: number
   if (c1 > 0 && !mapView) {
     for (let r = r1; r <= r2; r++) {
       if (!g.rowH(r)) continue;
-      for (let c = Math.max(0, c1 - 15); c < c1; c++) {
+      // Once the sheet is scrolled sideways, text in the frozen columns stops at their edge: it must not run on over
+      // the cells that have scrolled in beside them.
+      const from = s.freeze.cols > 0 && c1 > s.freeze.cols ? Math.max(s.freeze.cols, c1 - 15) : Math.max(0, c1 - 15);
+      for (let c = from; c < c1; c++) {
         const cell = s.cells.get(cellKey(r, c));
         if (!cell || typeof cell.v !== 'string' || !cell.v) continue;
         const st = book.styles[cell.s ?? 0] || {};

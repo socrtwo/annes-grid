@@ -456,10 +456,25 @@ function parseIsoDuration(s: string): number | null {
   return s.trim().startsWith('-') ? -v : v;
 }
 
+/** Splits a list of cell range addresses on white space, but not inside a quoted sheet name ($'My Sheet'.A1). */
+export function splitOdfAddresses(s: string): string[] {
+  const out: string[] = [];
+  let cur = '', q = false;
+  for (const ch of s) {
+    if (ch === "'") q = !q;
+    if (!q && /\s/.test(ch)) { if (cur) out.push(cur); cur = ''; } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 function parseIsoDate(s: string, date1904: boolean): number | null {
   const m = /^(-?\d{4,})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?)?/.exec(s.trim());
   if (!m) return null;
-  return partsToSerial(+m[1], +m[2], +m[3], date1904) + ((+(m[4] || 0)) * 3600 + (+(m[5] || 0)) * 60 + (+(m[6] || 0))) / 86400;
+  // Before 1900 there is no calendar serial to borrow: count days from the 1899-12-30 epoch (a time or small number
+  // carrying a date format is written this way), instead of letting the year be read as 1900 + y.
+  const day = +m[1] < 1900 && !date1904 ? Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 86400000) : partsToSerial(+m[1], +m[2], +m[3], date1904);
+  return day + ((+(m[4] || 0)) * 3600 + (+(m[5] || 0)) * 60 + (+(m[6] || 0))) / 86400;
 }
 
 export interface OdfDocs { content: Document; styles: Document | null; settings: Document | null; meta: Document | null; files?: JSZip }
@@ -511,7 +526,7 @@ export async function readOdf(docs: OdfDocs, warnings: string[]): Promise<Workbo
     }
     if (a(t, 'table', 'protected') === 'true') sheet.protection = { on: true, allow: ['selectLocked', 'selectUnlocked'] };
     const pr = a(t, 'table', 'print-ranges');
-    if (pr) sheet.print.area = pr.split(/\s+/).map((x) => splitSheetRef(odfRefToA1(x)).ref).join(',');
+    if (pr) sheet.print.area = splitOdfAddresses(pr).map((x) => splitSheetRef(odfRefToA1(x)).ref).join(',');
     await readTable(book, sheet, t, defs, docs, dateSerial, warnings);
     readTableExtras(sheet, t, defs, validity, warnings);
     // Sheet-local names
@@ -539,14 +554,14 @@ function readName(book: Workbook, ne: Element, sheet: string | null): void {
   if (!name) return;
   if (/^_xlnm\./i.test(name)) {
     const sh = sheet ? book.sheetByName(sheet) : null;
-    const addr = (a(ne, 'table', 'cell-range-address') || '').split(/\s+/).map(odfRefToA1);
+    const addr = splitOdfAddresses(a(ne, 'table', 'cell-range-address') || '').map(odfRefToA1);
     if (sh && /print_area/i.test(name)) sh.print.area = addr.map((x) => splitSheetRef(x).ref).join(',');
     return;
   }
   let ref = '';
   if (ne.localName === 'named-range') {
     const addr = a(ne, 'table', 'cell-range-address') || '';
-    ref = addr.split(/\s+/).map(odfRefToA1).join(',');
+    ref = splitOdfAddresses(addr).map(odfRefToA1).join(',');
   } else if (ne.localName === 'named-expression') ref = odfToFormula(a(ne, 'table', 'expression') || '');
   if (ref) book.names.push({ name, ref, sheet });
 }
@@ -608,6 +623,8 @@ async function readTable(book: Workbook, sheet: Sheet, t: Element, defs: StyleDe
         const rowDefault = styleIdFor(book, defs, a(ch, 'table', 'default-cell-style-name'));
         const cells = kids(ch).filter((x) => x.localName === 'table-cell' || x.localName === 'covered-table-cell');
         const hasContent = cells.some((x) => x.childNodes.length > 0 || a(x, 'office', 'value-type') || a(x, 'table', 'formula'));
+        // A row without values can still carry merged cells, cell formats and validation.
+        const hasLayout = !hasContent && cells.some((x) => a(x, 'table', 'number-columns-spanned') || a(x, 'table', 'number-rows-spanned') || a(x, 'table', 'style-name') || a(x, 'table', 'content-validation-name'));
         const times = hasContent ? Math.min(rep, Math.max(1, 10000 - replicated)) : rep > 1000 ? 0 : rep;
         for (let k = 0; k < times && row + k < MAX_ROWS; k++) {
           const r = row + k;
@@ -615,7 +632,7 @@ async function readTable(book: Workbook, sheet: Sheet, t: Element, defs: StyleDe
           if (hidden) sheet.hiddenRows.add(r);
           if (level) sheet.rowLevel.set(r, level);
           if (brk && r > 0 && k === 0) sheet.rowBreaks.push(r);
-          if (hasContent || rowDefault) await readRow(book, sheet, r, cells, defs, docs, dateSerial, colDefault, rowDefault, warnings);
+          if (hasContent || rowDefault || hasLayout) await readRow(book, sheet, r, cells, defs, docs, dateSerial, colDefault, rowDefault, warnings);
         }
         if (hasContent && rep > 1) replicated += times;
         row += rep;
@@ -775,7 +792,7 @@ function chartRef(addr: string): string | null {
 /** Validity rules, conditional formats and style:map conditions of one table. */
 function readTableExtras(sheet: Sheet, t: Element, defs: StyleDefs, validity: ReturnType<typeof readValidations>, warnings: string[]): void {
   applyValidations(sheet, validity);
-  const addr = (s: string): Range[] => s.trim().split(/\s+/).filter(Boolean).map((x) => parseRange(splitSheetRef(odfRefToA1(x)).ref)).filter((x): x is Range => !!x);
+  const addr = (s: string): Range[] => splitOdfAddresses(s).map((x) => parseRange(splitSheetRef(odfRefToA1(x)).ref)).filter((x): x is Range => !!x);
   const base = baseStyle(defs);
   const styleOf = (name: string): Partial<CellStyle> => {
     const st: Partial<CellStyle> = cellStyleOf(defs, name);
@@ -1038,6 +1055,7 @@ function buildOds(book: Workbook, out: OdsOut, flat: boolean): { content: string
       if (fx) { if (!frames.has(k)) frames.set(k, []); frames.get(k)!.push(fx); }
     }
     if (sheet.charts.length && !out.warnings.includes('Charts are not saved in OpenDocument files.')) out.warnings.push('Charts are not saved in OpenDocument files.');
+    for (const [has, note] of [[sheet.validations.length > 0, 'Data validation is not saved in OpenDocument files.'], [sheet.cf.length > 0, 'Conditional formatting is not saved in OpenDocument files.']] as const) if (has && !out.warnings.includes(note)) out.warnings.push(note);
 
     // Extent
     const used = sheet.usedRange();

@@ -97,6 +97,7 @@ export function convertField(s: string, opts: CsvOptions = {}, colType: 'general
   }
   if (opts.detectTypes === false) return { v: s };
   if (t.length > 1 && t[0] === '=') return { v: null, f: t.slice(1) };
+  if (t.length > 1 && t[0] === "'" && t[1] === '=') return { v: t.slice(1) };
   const up = t.toUpperCase();
   if (up === 'TRUE' || up === 'FALSE') return { v: up === 'TRUE' };
   const err = t[0] === '#' ? errorFromCode(t) : null;
@@ -250,7 +251,13 @@ export function sheetRows(sheet: Sheet, range: Range | null | undefined, opts: C
   const rows: string[][] = [];
   for (let r = rg.r1; r <= rg.r2; r++) {
     const row: string[] = [];
-    for (let c = rg.c1; c <= rg.c2; c++) row.push(cellText(sheet, r, c, opts));
+    for (let c = rg.c1; c <= rg.c2; c++) {
+      const t = cellText(sheet, r, c, opts);
+      // Text that begins with = would be read back (here and in other spreadsheets) as a formula: it is written with the
+      // apostrophe that marks text, which the import below takes off again.
+      const cell = sheet.get(r, c);
+      row.push(typeof cell?.v === 'string' && cell.f == null && t.startsWith('=') ? "'" + t : t);
+    }
     rows.push(row);
   }
   return rows;

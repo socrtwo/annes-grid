@@ -6,7 +6,8 @@
  * and styles are deduplicated (fonts, fills, borders, number formats) from the style ids in use.
  */
 import JSZip from 'jszip';
-import type { Workbook, Sheet } from '../model/workbook';
+import { Workbook, type Sheet } from '../model/workbook';
+import { renameSheet } from '../model/structure';
 import {
   CellError, type Cell, type CellStyle, type Border, type CFRule, type DataValidation, type ChartDef, type ChartSeries, type ChartType,
   type DrawingObject, type TableDef, type Scalar,
@@ -336,6 +337,16 @@ export interface XlsxExportOptions { kind?: 'xlsx' | 'xlsm' | 'xltx'; warnings?:
 
 export async function exportXlsx(book: Workbook, opts: XlsxExportOptions = {}): Promise<Blob> {
   const kind = opts.kind || 'xlsx';
+  // Sheet names the format cannot hold (over 31 characters, / \\ ? * [ ] :, a quote at either end, or two that then
+  // collide) are changed on a copy of the workbook, through the same renaming that keeps every reference in step.
+  const names = xlsxSheetNames(book.sheets.map((s) => s.name));
+  if (names.some((n, i) => n !== book.sheets[i].name)) {
+    book = Workbook.fromJSON(book.toJSON());
+    // Two passes, so that a new name never meets a sheet that still carries it.
+    book.sheets.forEach((s, i) => { if (s.name !== names[i]) renameSheet(book, s, `\u0001${i}`); });
+    book.sheets.forEach((s, i) => { if (s.name !== names[i]) renameSheet(book, s, names[i]); });
+    opts.warnings?.push('Some sheet names were changed to names an Excel workbook can hold.');
+  }
   const zip = new JSZip();
   const ctx: ExportCtx = {
     book, zip, styles: new Styles(book), sst: new SST(), overrides: [], defaults: new Map([['rels', 'application/vnd.openxmlformats-package.relationships+xml'], ['xml', 'application/xml']]),
@@ -409,6 +420,18 @@ export async function exportXlsx(book: Workbook, opts: XlsxExportOptions = {}): 
   const mime = kind === 'xlsm' ? 'application/vnd.ms-excel.sheet.macroEnabled.12' : kind === 'xltx' ? `${CT}spreadsheetml.template` : `${CT}spreadsheetml.sheet`;
   const data = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   return new Blob([data as BlobPart], { type: mime });
+}
+
+/** The sheet names as an .xlsx file can hold them: legal, at most 31 characters, and unique whatever the letter case. */
+export function xlsxSheetNames(names: string[]): string[] {
+  const taken = new Set<string>();
+  return names.map((name, i) => {
+    const base = safeSheetName(name, i);
+    let n = base;
+    for (let k = 2; taken.has(n.toLowerCase()); k++) { const tail = ` (${k})`; n = base.slice(0, 31 - tail.length) + tail; }
+    taken.add(n.toLowerCase());
+    return n;
+  });
 }
 
 function safeSheetName(name: string, i: number): string {

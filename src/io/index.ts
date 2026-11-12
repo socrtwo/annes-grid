@@ -301,13 +301,13 @@ export function sniffCategory(data: ArrayBuffer, name: string): SniffCategory { 
 /** The extension of a file name, lower case, without the dot. */
 export { extOf };
 
-export async function exportFile(book: Workbook, formatId: string, opts: { sheetIndex?: number; password?: string; csv?: CsvOptions; selectionOnly?: Range } = {}): Promise<Blob> {
+export async function exportFile(book: Workbook, formatId: string, opts: { sheetIndex?: number; password?: string; csv?: CsvOptions; selectionOnly?: Range; /** Receives notes about anything the format could not hold. */ warnings?: string[] } = {}): Promise<Blob> {
   const fmt = formatById(formatId);
   if (!fmt || !fmt.canExport) throw new Error(`Cannot save as ${formatId}`);
   const sheetIndex = opts.sheetIndex ?? book.activeSheet;
   switch (fmt.id) {
-    case 'xlsx': case 'xlsm': case 'xltx': return (await import('./xlsx-export')).exportXlsx(book, { kind: fmt.id as 'xlsx' });
-    case 'ods': return (await import('./ods')).exportOds(book);
+    case 'xlsx': case 'xlsm': case 'xltx': return (await import('./xlsx-export')).exportXlsx(book, { kind: fmt.id as 'xlsx', warnings: opts.warnings });
+    case 'ods': return (await import('./ods')).exportOds(book, opts.warnings);
     case 'fods': return (await import('./ods')).exportFods(book);
     case 'csv': case 'tsv': case 'txt': {
       const o: CsvOptions = { ...(opts.csv || {}) };

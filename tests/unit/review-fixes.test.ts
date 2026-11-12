@@ -12,7 +12,9 @@ import { Sheet } from '../../src/model/workbook';
 import { translateLotus } from '../../src/heritage/lotus';
 import { parseCreateTable } from '../../src/io/sqlite';
 import { exportOds, importOds } from '../../src/io/ods';
-import { exportXlsx } from '../../src/io/xlsx-export';
+import { exportXlsx, xlsxSheetNames } from '../../src/io/xlsx-export';
+import { exportCsv, importCsv } from '../../src/io/csv';
+import { splitOdfAddresses } from '../../src/io/ods';
 import { importXlsx } from '../../src/io/xlsx-import';
 
 const norm = (v: Scalar): any => (v instanceof CellError ? v.code : v);
@@ -239,5 +241,42 @@ describe('references when rows, columns or cells are inserted and deleted', () =
     b.transact('d', () => shiftCells(s, 'col', 0, -1));
     expect(Object.keys(s.filter!.columns)).toEqual(['0']);
     expect(s.filter!.sort).toEqual({ col: 1, desc: false });
+  });
+});
+
+describe('file formats, second round', () => {
+  it('makes sheet names an Excel file can hold and keeps formulas pointing at them', async () => {
+    expect(xlsxSheetNames(['a/b', 'A_B', "'q'", 'x'.repeat(41) + '1', 'x'.repeat(41) + '2'])).toEqual(['a_b', 'A_B (2)', 'q', 'x'.repeat(31), 'x'.repeat(27) + ' (2)']);
+    const b = new Workbook();
+    b.transact('t', () => {
+      b.sheet.name = 'a/b'; b.sheet.set(0, 0, { v: 5 });
+      b.recordBook(); b.sheets.push(new Sheet(b, 'Two'));
+      b.sheets[1].set(0, 0, { f: "'a/b'!A1*2" });
+    });
+    const notes: string[] = [];
+    const back = await importXlsx(await (await exportXlsx(b, { warnings: notes })).arrayBuffer());
+    expect(back.sheets.map((s) => s.name)).toEqual(['a_b', 'Two']);
+    expect(back.sheets[1].get(0, 0)?.f).toBe('a_b!A1*2');
+    expect(notes.join(' ')).toMatch(/sheet names/i);
+    expect(b.sheets[0].name).toBe('a/b');
+  });
+  it('writes text that begins with = so that it comes back as text', async () => {
+    const b = new Workbook();
+    b.transact('t', () => { b.sheet.set(0, 0, { v: '=1+1' }); b.sheet.set(0, 1, { f: '2+2', v: 4 }); b.sheet.set(0, 2, { v: 'plain' }); });
+    const blob = exportCsv(b);
+    const text = await blob.text();
+    expect(text.replace(/^\uFEFF/, '').split(/\r?\n/)[0]).toBe("'=1+1,4,plain");
+    const back = importCsv(await blob.arrayBuffer(), 'x.csv');
+    expect(back.sheet.get(0, 0)).toMatchObject({ v: '=1+1' });
+    expect(back.sheet.get(0, 0)?.f).toBeUndefined();
+  });
+  it('splits OpenDocument addresses outside quoted sheet names only', () => {
+    expect(splitOdfAddresses("$'My Sheet'.$A$1:.$B$2 $Other.$C$3")).toEqual(["$'My Sheet'.$A$1:.$B$2", '$Other.$C$3']);
+  });
+  it('reads merged cells in rows without values, and dates before 1900, from OpenDocument', async () => {
+    const b = new Workbook();
+    b.transact('t', () => { b.sheet.set(0, 0, { v: 'x' }); b.sheet.merges.push({ r1: 2, c1: 0, r2: 3, c2: 1 }); });
+    const back = await importOds(await (await exportOds(b)).arrayBuffer());
+    expect(back.sheet.merges).toEqual([{ r1: 2, c1: 0, r2: 3, c2: 1 }]);
   });
 });

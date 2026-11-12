@@ -170,7 +170,10 @@ export async function saveTab(app: App, tab: BookTab, opts: { as?: boolean; form
     if (!r) return false;
     password = r.p1;
   }
-  const blob = await exportFile(tab.book, format, { sheetIndex: tab.book.activeSheet, password });
+  const notes: string[] = [];
+  const blob = await exportFile(tab.book, format, { sheetIndex: tab.book.activeSheet, password, warnings: notes });
+  // What the chosen format could not hold is said once, instead of being dropped silently.
+  if (notes.length) setTimeout(() => toast([...new Set(notes)].slice(0, 3).join(' '), { ms: 9000 }), 600);
   if (!opts.as && !opts.copy && tab.uri && format === tab.format) {
     try {
       if (await writeBack(tab.uri, blob)) { markSaved(app, tab, version); toast(`Saved ${tab.displayName}`); await snapshot(app, tab, 'Saved'); return true; }

@@ -67,6 +67,10 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, "Cousine", 
 .ql-qat-bottom .ql-qat-customize:hover { background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); }
 .ql-qat-at-bottom .ql-qat-bottom { display: flex; }
 .ql-qat-hidden .ql-qat, .ql-qat-hidden.ql-qat-at-bottom .ql-qat-bottom { display: none; }
+.ql-qat-restore { display: none; }
+.ql-qat-hidden .ql-qat-restore { display: inline-flex; }
+/* However little room the title bar has, the bar keeps its menu button (it is how the bar is moved, relabelled and customized). */
+.ql-titlebar .ql-qat:not(:empty) { min-width: var(--btn); }
 /* Touch/Mouse Mode: larger targets and more space between commands. */
 .ql-touch { --btn: calc(48px * var(--ql-ui-scale)); --ico: calc(24px * var(--ql-ui-scale)); }
 .ql-touch .ql-ribbon .ql-cmd { min-width: calc(60px * var(--ql-ui-scale)); padding: 7px 5px 4px; margin: 0 2px; }

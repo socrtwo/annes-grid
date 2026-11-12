@@ -61,7 +61,9 @@ export class Shell {
     this.titleBtn = h('button', { class: 'ql-title', title: 'Rename / workbook info', onclick: () => this.renameDoc() }, 'Book');
     const search = h('button', { class: 'ql-iconbtn', title: 'Search commands (Alt+Q)', 'aria-label': 'Search commands', onclick: () => this.commandPalette() }, icon('search'));
     const more = h('button', { class: 'ql-iconbtn', title: 'More', 'aria-label': 'More', onclick: (e: MouseEvent) => this.moreMenu(e.currentTarget as HTMLElement) }, icon('more_vert'));
-    this.titlebar.append(fileBtn, this.qatEl, this.titleBtn, h('span', { class: 'ql-spacer' }), search, more);
+    // Shown only while the Quick Access Bar is hidden, in its place, so there is always a visible way to get it back.
+    const qatBack = h('button', { class: 'ql-iconbtn ql-qat-restore', title: 'Show Quick Access Bar', 'aria-label': 'Show Quick Access Bar', onclick: () => { this.app.prefs.qatHidden = false; this.app.savePrefs(); this.applyPrefs(); toast('Quick Access Bar shown'); } }, icon('bolt'));
+    this.titlebar.append(fileBtn, this.qatEl, qatBack, this.titleBtn, h('span', { class: 'ql-spacer' }), search, more);
     this.tabsEl = h('nav', { class: 'ql-tabs', role: 'tablist' });
     this.ribbonEl = h('div', { class: 'ql-ribbon', role: 'toolbar' });
     this.docTabsEl = h('div', { class: 'ql-doctabs' });
@@ -154,7 +156,7 @@ export class Shell {
         else if (e.id === '__more') { this.customizeQat(); return; }
         else if (e.id === '__pos') { this.app.exec('view.qatAtBottom'); return; }
         else if (e.id === '__labels') p.qatLabels = !p.qatLabels;
-        else if (e.id === '__hide') { p.qatHidden = true; toast('Quick Access Bar hidden. Show it again from View ▸ Show Quick Access Bar or by long-pressing any ribbon command.', { ms: 5000 }); }
+        else if (e.id === '__hide') { p.qatHidden = true; toast('Quick Access Bar hidden. The ⚡ button in the title bar shows it again.', { ms: 8000, action: 'Undo', onAction: () => { p.qatHidden = false; this.app.savePrefs(); this.applyPrefs(); } }); }
         else if (e.id === '__ribbon') p.ribbon = p.ribbon === 'full' ? 'tabs' : 'full';
         this.app.savePrefs();
         this.applyPrefs();
@@ -598,6 +600,8 @@ export class Shell {
       { separator: true },
       { id: 'view.navigator', label: 'Navigator', icon: 'list_alt' }, { id: 'review.showComments', label: 'Comments', icon: 'forum' }, { id: 'edit.find', label: 'Find & Replace', icon: 'search' }, { id: 'formulas.watchWindow', label: 'Watch Window', icon: 'visibility' },
       { separator: true },
+      { id: 'view.showQat', label: app.prefs.qatHidden ? 'Show Quick Access Bar' : 'Hide Quick Access Bar', icon: 'bolt' },
+      { id: 'view.qatAtBottom', label: app.prefs.qatPosition === 'bottom' ? 'Quick Access Bar Above the Ribbon' : 'Quick Access Bar at the Bottom', icon: 'swap_vert' },
       { id: 'file.customizeQat', label: 'Customize Quick Access Bar…', icon: 'tune' }, { id: 'file.customizeRibbon', label: 'Customize Tabs…', icon: 'view_quilt' },
       { id: 'file.customizeKeyboard', label: 'Customize Keyboard…', icon: 'keyboard' }, { id: 'file.options', label: 'Options…', icon: 'settings' },
       { id: 'help.about', label: 'About', icon: 'info' },

@@ -157,9 +157,13 @@ jobs:
           ls -la
           sha256sum QuillGrid-* > SHA256SUMS.txt
       - id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           V='${{ needs.web.outputs.version }}'
-          if [[ -n "${{ inputs.tag }}" ]]; then TAG="${{ inputs.tag }}"
+          # The tag typed for a manual run arrives as data in the environment, never as part of this script.
+          if [[ -n "$INPUT_TAG" && ! "$INPUT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]; then echo "::error::The tag may hold letters, digits, dots, dashes and underscores only."; exit 1; fi
+          if [[ -n "$INPUT_TAG" ]]; then TAG="$INPUT_TAG"
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then TAG="${GITHUB_REF#refs/tags/}"; else TAG="v$V-build.${{ github.run_number }}"; fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           # Tags: prerelease when the version has a suffix (v1.0.0-beta.1). Manual runs: the checkbox.

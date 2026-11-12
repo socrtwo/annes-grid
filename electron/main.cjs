@@ -28,6 +28,8 @@ const SCHEME = 'app';
 // The page's origin keeps the app's former name so settings, drafts and keys stored by earlier
 // versions stay readable.
 const ORIGIN = `${SCHEME}://quilllattice`; // rename:keep
+/** True for a URL of the app itself. The host is compared whole: a prefix test would also pass app://quilllattice.evil/. */
+const isAppUrl = (url) => { try { const u = new URL(url); return u.protocol === `${SCHEME}:` && u.host === 'quilllattice'; } catch { return false; } }; // rename:keep
 const OPENABLE = ['xlsx', 'xlsm', 'xltx', 'xltm', 'xls', 'xlt', 'xlw', 'ods', 'ots', 'fods', 'csv', 'tsv', 'tab', 'txt', 'prn', 'html', 'htm', 'xml', 'slk', 'dif', 'qgw', 'qgwe', 'json', 'qlw', 'qlwe',
   // legacy spreadsheets
   'wk1', 'wks', 'wk3', 'wk4', '123', 'wrk', 'wr1', 'wq1', 'wq2', 'wb1', 'wb2', 'wb3', 'qpw', 'xlr', 'dbf', 'vc', 'cwk'];
@@ -134,7 +136,7 @@ function stopLoop() { if (loop) { clearTimeout(loop.timer); try { loop.server.cl
 const safeUrl = (u) => typeof u === 'string' && /^(https?|mailto|tel|ftp|sms|geo):/i.test(u.trim());
 function handle(name, fn) {
   ipcMain.handle('ql:' + name, async (e, opts) => {
-    if (!win || e.sender !== win.webContents || !e.senderFrame || !e.senderFrame.url.startsWith(ORIGIN)) throw new Error('Refused');
+    if (!win || e.sender !== win.webContents || !e.senderFrame || !isAppUrl(e.senderFrame.url)) throw new Error('Refused');
     return fn(opts || {});
   });
 }
@@ -293,7 +295,7 @@ function createWindow() {
   });
   // Links open in the system browser; the window never navigates away from the app.
   win.webContents.setWindowOpenHandler(({ url }) => { if (safeUrl(url)) void shell.openExternal(url); return { action: 'deny' }; });
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(ORIGIN)) { e.preventDefault(); if (safeUrl(url)) void shell.openExternal(url); } });
+  win.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) { e.preventDefault(); if (safeUrl(url)) void shell.openExternal(url); } });
   // The page asks before unloading with unsaved workbooks: confirm here, as the browser would.
   win.webContents.on('will-prevent-unload', (e) => {
     const choice = dialog.showMessageBoxSync(win, { type: 'question', buttons: ['Close without saving', 'Cancel'], defaultId: 1, cancelId: 1, title: 'Unsaved changes', message: 'Some workbooks have unsaved changes. Close Anne\'s Grid anyway?' });

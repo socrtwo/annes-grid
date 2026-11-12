@@ -392,3 +392,14 @@ describe('LAMBDA helper functions', () => {
     expect(val('INDEX(BYROW({1,2;3,4},LAMBDA(r,r)),1)')).toBe('#CALC!');
   });
 });
+
+describe('bond coupon dates', () => {
+  it('are found by calendar date when settlement is the 30th and coupons fall on the 31st', () => {
+    const { val } = book();
+    expect(val('COUPPCD(DATE(2020,3,30),DATE(2030,3,31),4)')).toBe(43830);
+    expect(val('COUPNCD(DATE(2020,3,30),DATE(2030,3,31),4)')).toBe(43921);
+    expect(val('COUPDAYBS(DATE(2020,3,30),DATE(2030,3,31),4,0)')).toBe(90);
+    expect(val('COUPPCD(DATE(2011,1,25),DATE(2011,11,15),2,1)')).toBe(40497);
+    expect(val('COUPNCD(DATE(2011,1,25),DATE(2011,11,15),2,1)')).toBe(40678);
+  });
+});

@@ -14,6 +14,27 @@ import { kvKeys } from './util/store';
 import { allCommands, getCommand } from './commands/registry';
 import { installScrollCues } from './ui/scrollcue';
 
+// A second line of defence for the web app: should markup from a file ever reach the page unescaped, script in it
+// (inline handlers, injected <script>, javascript: links) does not run. The desktop app sends the same policy as a
+// response header; the Android and iOS apps are left as they are (their WebView bridge has not been tested with it).
+if (!isNative() && !isCapacitor() && !import.meta.env.DEV && /^https?:$/.test(location.protocol)) {
+  const meta = document.createElement('meta');
+  meta.httpEquiv = 'Content-Security-Policy';
+  meta.content = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net",
+    "worker-src 'self' blob:",
+    "connect-src 'self' https: http://localhost:* http://127.0.0.1:* data: blob:",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' data: blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join('; ');
+  document.head.appendChild(meta);
+}
+
 installFonts();
 
 // Scroll cues (thin bars, edge shadows and a "More" chip) on every scroll container that can hold choices:

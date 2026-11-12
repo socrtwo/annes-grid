@@ -229,17 +229,29 @@ function coup(cal: Cal, settle: number, mat: number, freq: number, basis: number
   return { cal, settle: BDate.of(cal, settle, basis), mat: BDate.of(cal, mat, basis), freq, basis };
 }
 
+/**
+ * A date as it falls in the calendar, for deciding which coupon date comes before or after settlement. The 30/360
+ * day (where the 30th and the 31st are the same day) is for counting days only: compared that way, a settlement on
+ * the 30th would count as being on a coupon date that falls on the 31st.
+ */
+const calendarKey = (d: BDate): number => {
+  const dim = daysInMonth(d.year, d.month);
+  return d.year * 10000 + d.month * 100 + (d.lastDay ? dim : Math.min(d.origDay, dim));
+};
+
 function couppcd(c: Coup): BDate {
+  const settle = calendarKey(c.settle);
   const d = c.mat.clone().setYear(c.settle.year);
-  if (d.lt(c.settle)) d.addYears(1);
-  while (d.gt(c.settle)) d.addMonths(-12 / c.freq);
+  if (calendarKey(d) < settle) d.addYears(1);
+  while (calendarKey(d) > settle) d.addMonths(-12 / c.freq);
   return d;
 }
 
 function coupncd(c: Coup): BDate {
+  const settle = calendarKey(c.settle);
   const d = c.mat.clone().setYear(c.settle.year);
-  if (d.gt(c.settle)) d.addYears(-1);
-  while (!d.gt(c.settle)) d.addMonths(12 / c.freq);
+  if (calendarKey(d) > settle) d.addYears(-1);
+  while (calendarKey(d) <= settle) d.addMonths(12 / c.freq);
   return d;
 }
 

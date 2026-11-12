@@ -232,7 +232,7 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, "Cousine", 
 /* Toasts */
 /* Centered between the side insets (landscape navigation bars, cutouts); dialog.ts lifts them off buttons. */
 .ql-toasts { position: fixed; left: calc((100% + var(--sal) - var(--sar)) / 2); bottom: calc(46px + var(--sab)); transform: translateX(-50%); z-index: 1100; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; width: max-content; max-width: min(92vw, calc(100vw - var(--sal) - var(--sar) - 16px)); }
-.ql-toast { background: #2a2f3a; color: #fff; padding: 9px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.3); font-size: 13.5px; display: flex; gap: 10px; align-items: center; pointer-events: auto; transition: opacity .3s; }
+.ql-toast { background: #2a2f3a; color: #fff; padding: 9px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.3); font-size: 13.5px; display: flex; gap: 10px; align-items: center; pointer-events: auto; transition: opacity .3s; max-width: 100%; min-width: 0; box-sizing: border-box; overflow-wrap: anywhere; }
 .ql-toast.ql-out { opacity: 0; }
 .ql-toast .ql-link { color: #ffd38a; }
 

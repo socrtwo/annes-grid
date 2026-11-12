@@ -44,7 +44,9 @@ export class CellEditor {
     this.bindInput(this.ta, 'cell');
   }
 
-  destroy(): void { this.ta.remove(); this.popup.remove(); this.tip.remove(); }
+  private unbind = new AbortController();
+
+  destroy(): void { this.unbind.abort(); this.ta.remove(); this.popup.remove(); this.tip.remove(); }
 
   /** The formula bar's input is attached by the shell. */
   attachBar(bar: HTMLTextAreaElement): void {
@@ -156,18 +158,23 @@ export class CellEditor {
   // ------------------------------------------------------------------------------------------
 
   private bindInput(inp: HTMLTextAreaElement, which: 'cell' | 'bar'): void {
+    // Every workbook's editor listens to the one shared formula bar: only the editor of the
+    // workbook in front may answer, or an entry is written into each open workbook's active cell.
+    const mine = () => which === 'cell' || this.g.app.active?.grid === this.g;
+    const o = { signal: this.unbind.signal };
     inp.addEventListener('input', () => {
+      if (!mine()) return;
       if (!this.active) { this.g.startEdit({ mode: 'edit', fromBar: which === 'bar', text: inp.value }); return; }
       this.stopPointing();
       this.sync(inp);
       this.autoCompleteValue(inp);
       this.update();
       this.position();
-    });
-    inp.addEventListener('keydown', (e) => this.onKey(e, inp, which));
-    inp.addEventListener('focus', () => { this.barFocused = which === 'bar'; if (which === 'bar' && !this.active) this.g.startEdit({ mode: 'edit', fromBar: true }); });
-    inp.addEventListener('click', () => { if (this.active) { this.stopPointing(); if (this.mode === 'enter') this.mode = 'edit'; this.update(); } });
-    inp.addEventListener('blur', () => setTimeout(() => this.hidePopup(), 150));
+    }, o);
+    inp.addEventListener('keydown', (e) => { if (mine()) this.onKey(e, inp, which); }, o);
+    inp.addEventListener('focus', () => { if (!mine()) return; this.barFocused = which === 'bar'; if (which === 'bar' && !this.active) this.g.startEdit({ mode: 'edit', fromBar: true }); }, o);
+    inp.addEventListener('click', () => { if (mine() && this.active) { this.stopPointing(); if (this.mode === 'enter') this.mode = 'edit'; this.update(); } }, o);
+    inp.addEventListener('blur', () => setTimeout(() => this.hidePopup(), 150), o);
   }
 
   private sync(from: HTMLTextAreaElement): void {
@@ -177,10 +184,12 @@ export class CellEditor {
 
   private onKey(e: KeyboardEvent, inp: HTMLTextAreaElement, which: 'cell' | 'bar'): void {
     if (!this.active) return;
+    // Keys pressed while an input method is composing belong to it (Enter picks a candidate).
+    if (e.isComposing || e.keyCode === 229) return;
     const g = this.g;
     // Autocomplete list navigation
     if (this.popup.classList.contains('ql-show')) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this.acIndex = (this.acIndex + (e.key === 'ArrowDown' ? 1 : -1) + this.acItems.length) % this.acItems.length; this.renderPopup(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this.acIndex = (this.acIndex + (e.key === 'ArrowDown' ? 1 : -1) + this.acItems.length) % this.acItems.length; this.acMoved = true; this.renderPopup(); return; }
       if (e.key === 'Tab' || (e.key === 'Enter' && this.acItems.length && this.acTyped())) { e.preventDefault(); this.acceptAc(); return; }
       if (e.key === 'Escape') { e.preventDefault(); this.hidePopup(); return; }
     }
@@ -241,7 +250,9 @@ export class CellEditor {
     if (k === 'F3') { e.preventDefault(); g.app.exec('formulas.pasteName'); return; }
   }
 
-  private acTyped(): boolean { return true; }
+  /** Enter takes a suggestion only after the arrows chose one; otherwise it enters the cell as typed (Tab always takes it). */
+  private acMoved = false;
+  private acTyped(): boolean { return this.acMoved; }
 
   /** Commits the edit. Returns false when validation rejected the value (editing continues). */
   commit(move: 'down' | 'up' | 'right' | 'left' | 'none' | 'enter', opts: { array?: boolean; fill?: boolean } = {}): boolean {
@@ -347,9 +358,10 @@ export class CellEditor {
       for (const name of functionNames()) if (name.startsWith(prefix)) { const f = FUNCTIONS.get(name)!; items.push({ label: name, insert: name + '(', desc: f.desc, kind: 'fn' }); }
       for (const n of g.sheet.book.names) if (n.name.toUpperCase().startsWith(prefix) && (!n.sheet || n.sheet === g.sheet.name)) items.push({ label: n.name, insert: n.name, desc: n.comment || n.ref, kind: 'name' });
       for (const sh of g.sheet.book.sheets) for (const tb of sh.tables) if (tb.name.toUpperCase().startsWith(prefix)) items.push({ label: tb.name, insert: tb.name + '[', desc: 'Table', kind: 'table' });
-      if (items.length && !(items.length === 1 && items[0].label === prefix)) {
+      if (items.length && !(items.length === 1 && items[0].label.toUpperCase() === prefix)) {
         this.acItems = items.slice(0, 40);
         this.acIndex = 0;
+        this.acMoved = false;
         this.renderPopup();
       } else this.hidePopup();
     } else this.hidePopup();

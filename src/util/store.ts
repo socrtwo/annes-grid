@@ -33,14 +33,18 @@ export async function kvGet<T = any>(key: string): Promise<T | undefined> {
   });
 }
 
-export async function kvSet(key: string, value: any): Promise<void> {
+/** Stores a value. Resolves to false when it could not be stored (storage full or unavailable). */
+export async function kvSet(key: string, value: any): Promise<boolean> {
   const db = await open();
-  if (!db) { try { if (typeof localStorage !== 'undefined') localStorage.setItem('qlkv:' + key, JSON.stringify(value)); } catch { /* */ } return; }
+  if (!db) { try { if (typeof localStorage !== 'undefined') { localStorage.setItem('qlkv:' + key, JSON.stringify(value)); return true; } } catch { /* */ } return false; }
   return new Promise((resolve) => {
-    const tx = db.transaction(OS, 'readwrite');
-    tx.objectStore(OS).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
+    try {
+      const tx = db.transaction(OS, 'readwrite');
+      tx.objectStore(OS).put(value, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false); // a quota failure at commit arrives as an abort
+    } catch { resolve(false); }
   });
 }
 
@@ -52,6 +56,7 @@ export async function kvDel(key: string): Promise<void> {
     tx.objectStore(OS).delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
+    tx.onabort = () => resolve();
   });
 }
 

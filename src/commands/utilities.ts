@@ -485,9 +485,9 @@ const INDEX_MARK = 'QlSheetIndex';
 /** A sheet's content for a copy: without its id, so the copy keeps its own (undo finds a sheet by id). */
 function copyJSON(src: Sheet): any { const j: any = src.toJSON(); delete j.id; return j; }
 
-export function uniqueSheetName(book: import('../model/workbook').Workbook, base: string, taken: Set<string> = new Set()): string {
+export function uniqueSheetName(book: import('../model/workbook').Workbook, base: string, taken: Set<string> = new Set(), /** The sheet being renamed: its own name (in any letter case) is free for it. */ self?: Sheet): string {
   const clean = (validSheetName(base) ? base : base.replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31)) || 'Sheet';
-  const has = (n: string) => !!book.sheetByName(n) || taken.has(n.toLowerCase());
+  const has = (n: string) => { const hit = book.sheetByName(n); return (!!hit && hit !== self) || taken.has(n.toLowerCase()); };
   if (!has(clean)) return clean;
   let i = 2;
   while (has(`${clean.slice(0, 27)} (${i})`)) i++;
@@ -607,7 +607,7 @@ defTools([
       const p = parseCell(o.cell.replace(/\$/g, ''));
       if (!p) { toast('That is not a valid cell.'); return; }
       const book = app.book; let n = 0;
-      book.transact('Rename Sheets from a Cell', () => { for (const s of sheetsByNames(book, o.names)) { const t = shownText(s, p.r, p.c).trim(); if (!t || t === s.name) continue; const name = uniqueSheetName(book, t); renameSheet(book, s, name); n++; } });
+      book.transact('Rename Sheets from a Cell', () => { for (const s of sheetsByNames(book, o.names)) { const t = shownText(s, p.r, p.c).trim(); if (!t || t === s.name) continue; const name = uniqueSheetName(book, t, undefined, s); renameSheet(book, s, name); n++; } });
       app.ui.rebuild(); toast(`${plural(n, 'sheet')} renamed`);
     },
   },
@@ -623,7 +623,7 @@ defTools([
           name = `${o.prefix || ''}${name}${o.suffix || ''}`;
           if (o.caseMode === 'upper') name = name.toUpperCase(); else if (o.caseMode === 'lower') name = name.toLowerCase(); else if (o.caseMode === 'proper') name = name.toLowerCase().replace(/(^|\s)(\p{L})/gu, (_m, a: string, b: string) => a + b.toUpperCase());
           if (name === s.name || !name.trim()) continue;
-          renameSheet(book, s, uniqueSheetName(book, name)); n++;
+          renameSheet(book, s, uniqueSheetName(book, name, undefined, s)); n++;
         }
       });
       app.ui.rebuild(); toast(`${plural(n, 'sheet')} renamed`);

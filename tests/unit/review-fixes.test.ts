@@ -376,3 +376,19 @@ describe('numbers at the edges', () => {
     expect(val('COUNTIF(D3:D4,"")')).toBe(2);
   });
 });
+
+describe('LAMBDA helper functions', () => {
+  it('accept the bare name of a function', () => {
+    const { val } = book();
+    expect(val('SUM(BYROW({1,2;3,4},SUM))')).toBe(10);
+    expect(val('SUM(MAP({1,-2},ABS))')).toBe(3);
+    expect(val('SUM(BYCOL({1,2;3,4},MAX))')).toBe(7);
+    expect(val('REDUCE(0,{1,2,3},SUM)')).toBe(6);
+    expect(val('SUM(MAP({1,2},LAMBDA(x,x*2)))')).toBe(6);
+  });
+  it('give #CALC! when the function returns an array for one cell', () => {
+    const { val } = book();
+    expect(val('INDEX(MAP({1,2},LAMBDA(x,{1,2})),1)')).toBe('#CALC!');
+    expect(val('INDEX(BYROW({1,2;3,4},LAMBDA(r,r)),1)')).toBe('#CALC!');
+  });
+});

@@ -224,13 +224,15 @@ const SMALL_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'for',
 /** Title case the way style guides want it: small words lower except first and last, after a colon capitalised, acronyms kept. */
 export function titleCase(s: string): string {
   const words = s.trim().split(/(\s+|-)/);
+  // Text typed all in capitals has no acronyms to protect: every word is recased.
+  const allCaps = s === s.toUpperCase();
   let first = true; let afterColon = false;
   const out = words.map((w, i) => {
     if (/^\s+$/.test(w) || w === '-' || w === '') return w;
     const isLast = words.slice(i + 1).every((x) => /^\s*$/.test(x) || x === '-');
     const low = w.toLowerCase(); const bare = low.replace(/[^\w']/g, '');
     let res: string;
-    if (w === w.toUpperCase() && /[A-Z]{2,}/.test(w) && w.length <= 5) res = w; // acronym
+    if (!allCaps && w === w.toUpperCase() && /[A-Z]{2,}/.test(w) && w.length <= 5) res = w; // acronym
     else if (!first && !isLast && !afterColon && SMALL_WORDS.has(bare)) res = low;
     else res = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
     first = false; afterColon = /:$/.test(w);
@@ -244,7 +246,7 @@ export function smartPunctuation(s: string): string {
 }
 export function straightPunctuation(s: string): string { return s.replace(/[“”„]/g, '"').replace(/[‘’‚]/g, "'").replace(/—/g, '--').replace(/–/g, '-').replace(/…/g, '...'); }
 const FRACTIONS: Record<string, string> = { '1/2': '½', '1/3': '⅓', '2/3': '⅔', '1/4': '¼', '3/4': '¾', '1/5': '⅕', '2/5': '⅖', '3/5': '⅗', '4/5': '⅘', '1/6': '⅙', '5/6': '⅚', '1/8': '⅛', '3/8': '⅜', '5/8': '⅝', '7/8': '⅞' };
-export function fractionGlyphs(s: string): string { return s.replace(/\b(\d+)\/(\d+)\b/g, (m) => FRACTIONS[m] || m); }
+export function fractionGlyphs(s: string): string { return s.replace(/(?<![\d/.])(\d+)\/(\d+)(?![\d/])/g, (m) => FRACTIONS[m] || m); }
 export function thinSpaceThousands(s: string): string { return s.replace(/\b(\d{1,3})(,\d{3})+\b/g, (m) => m.replace(/,/g, ' ')); }
 export function hangingPunctuationSafe(s: string): string { return s.replace(/\s+([,.;:!?])/g, '$1').replace(/([,.;:!?])(?=[^\s"'”’)\]])/g, '$1 ').replace(/\.\s\.\s\./g, '...'); }
 
@@ -456,7 +458,7 @@ export function dmsToDecimal(s: string): number | null {
   if (+m[1] < 0 || /[SW]/i.test(m[4] || '')) v = -v;
   return Math.round(v * 1e6) / 1e6;
 }
-export function decimalToDms(v: number, axis: 'lat' | 'lon'): string { const a = Math.abs(v); const d = Math.floor(a), mFull = (a - d) * 60, m = Math.floor(mFull), sec = Math.round((mFull - m) * 60 * 10) / 10; const hemi = axis === 'lat' ? (v < 0 ? 'S' : 'N') : (v < 0 ? 'W' : 'E'); return `${d}°${m}'${sec}"${hemi}`; }
+export function decimalToDms(v: number, axis: 'lat' | 'lon'): string { const a = Math.abs(v); let d = Math.floor(a), m = Math.floor((a - d) * 60), sec = Math.round(((a - d) * 60 - m) * 60 * 10) / 10; /* seconds that round up to 60 carry into minutes and degrees */ if (sec >= 60) { sec = 0; m++; } if (m >= 60) { m = 0; d++; } const hemi = axis === 'lat' ? (v < 0 ? 'S' : 'N') : (v < 0 ? 'W' : 'E'); return `${d}°${m}'${sec}"${hemi}`; }
 /** Great-circle distance in kilometers. */
 export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number { const R = 6371.0088; const toR = (x: number) => (x * Math.PI) / 180; const dLat = toR(lat2 - lat1), dLon = toR(lon2 - lon1); const a = Math.sin(dLat / 2) ** 2 + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(a)); }
 export function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number { const toR = (x: number) => (x * Math.PI) / 180; const y = Math.sin(toR(lon2 - lon1)) * Math.cos(toR(lat2)); const x = Math.cos(toR(lat1)) * Math.sin(toR(lat2)) - Math.sin(toR(lat1)) * Math.cos(toR(lat2)) * Math.cos(toR(lon2 - lon1)); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }

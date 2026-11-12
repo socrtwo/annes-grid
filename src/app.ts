@@ -238,13 +238,18 @@ export class App {
   }
 
   async saveDrafts(): Promise<void> {
+    let saved = 0, failed = 0;
     for (const tab of this.docs) {
       if (!tab.dirty) continue;
+      let ok = false;
       try {
-        await kvSet('draft:' + tab.id, { id: tab.id, json: tab.book.toJSON(), title: tab.title, fileName: tab.fileName, format: tab.format, uri: tab.uri, key: tab.key, time: Date.now() });
+        ok = await kvSet('draft:' + tab.id, { id: tab.id, json: tab.book.toJSON(), title: tab.title, fileName: tab.fileName, format: tab.format, uri: tab.uri, key: tab.key, time: Date.now() });
       } catch { /* storage full */ }
+      if (ok) saved++; else failed++;
     }
-    this.ui.status?.('Draft saved');
+    // Saying "Draft saved" when nothing was stored would promise a recovery that cannot happen.
+    if (failed) this.ui.status?.('Draft could not be saved (storage is full): save the workbook to a file');
+    else if (saved) this.ui.status?.('Draft saved');
   }
 
   followLink(href: string): void {

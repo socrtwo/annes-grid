@@ -38,8 +38,8 @@ export function decodeEntities(s: string): string {
     return ENTITIES[e.toLowerCase()] ?? m;
   });
 }
-export function encodeEntities(s: string): string { return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!)).replace(/[^\x00-\x7f]/g, (ch) => `&#${ch.codePointAt(0)};`); }
-export function stripTags(s: string): string { return decodeEntities(s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n').replace(/<[^>]+>/g, '')).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); }
+export function encodeEntities(s: string): string { return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!)).replace(/[^\x00-\x7f]/gu, (ch) => `&#${ch.codePointAt(0)};`); }
+export function stripTags(s: string): string { return decodeEntities(s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n').replace(/<\/?[a-zA-Z!][^>]*>/g, '')).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); }
 export function urlDecode(s: string): string { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch { return s; } }
 export function urlEncode(s: string): string { return encodeURIComponent(s); }
 export function urlParts(s: string): { protocol: string; host: string; path: string; query: string; hash: string } | null { try { const u = new URL(s.trim()); return { protocol: u.protocol.replace(':', ''), host: u.hostname, path: u.pathname, query: u.search.replace(/^\?/, ''), hash: u.hash.replace(/^#/, '') }; } catch { return null; } }

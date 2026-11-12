@@ -634,8 +634,11 @@ function paintHeaders(g: Grid, ctx: CanvasRenderingContext2D, t: Theme, vis: { r
   const fullCols = new Set<number>(), fullRows = new Set<number>();
   for (const rg of s.sel.ranges) {
     const big = (rg.c2 - rg.c1) * (rg.r2 - rg.r1) > 4e6;
-    for (let c = Math.max(rg.c1, 0); c <= Math.min(rg.c2, vis.c2 + 1); c++) { selCols.add(c); if (rg.r1 === 0 && rg.r2 >= MAX_ROWS - 1) fullCols.add(c); }
-    for (let r = Math.max(rg.r1, 0); r <= Math.min(rg.r2, vis.r2 + 1); r++) { selRows.add(r); if (rg.c1 === 0 && rg.c2 >= MAX_COLS - 1) fullRows.add(r); }
+    // Only the headers on screen (the frozen ones and the scrolled ones) are looked at: a whole column selected at the
+    // bottom of the sheet would otherwise mean a million rows per repaint.
+    const fullC = rg.r1 === 0 && rg.r2 >= MAX_ROWS - 1, fullR = rg.c1 === 0 && rg.c2 >= MAX_COLS - 1;
+    for (const [lo, hi] of [[0, s.freeze.cols - 1], [vis.c1, vis.c2 + 1]]) for (let c = Math.max(rg.c1, lo); c <= Math.min(rg.c2, hi); c++) { selCols.add(c); if (fullC) fullCols.add(c); }
+    for (const [lo, hi] of [[0, s.freeze.rows - 1], [vis.r1, vis.r2 + 1]]) for (let r = Math.max(rg.r1, lo); r <= Math.min(rg.r2, hi); r++) { selRows.add(r); if (fullR) fullRows.add(r); }
     void big;
   }
   // Column headers

@@ -179,7 +179,7 @@ export function applyNumOp(v: number, op: NumOp, x = 0): number {
   switch (op) {
     case 'add': return v + x; case 'subtract': return v - x; case 'multiply': return v * x; case 'divide': return x === 0 ? NaN : v / x; case 'power': return Math.pow(v, x);
     case 'negate': return -v; case 'abs': return Math.abs(v); case 'percentOf': return v / 100; case 'addPercent': return v + v * x / 100;
-    case 'round': { const m = Math.pow(10, x); return Math.sign(v) * Math.round(Math.abs(v) * m) / m; }
+    case 'round': { const m = Math.pow(10, x), a = Math.abs(v) * m; /* 1.005 is stored a hair below: the nudge rounds it the way it reads */ return Math.sign(v) * Math.round(a + a * 4 * Number.EPSILON) / m; }
     case 'roundTo': return x === 0 ? v : Math.round(v / x) * x; case 'ceiling': return x === 0 ? v : Math.ceil(v / x) * x; case 'floor': return x === 0 ? v : Math.floor(v / x) * x;
     case 'int': return Math.trunc(v); case 'sqrt': return v < 0 ? NaN : Math.sqrt(v); case 'log': return v <= 0 ? NaN : Math.log10(v); case 'reciprocal': return v === 0 ? NaN : 1 / v;
   }

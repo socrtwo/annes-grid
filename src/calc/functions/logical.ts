@@ -1,11 +1,32 @@
 /** Logical functions, LET/LAMBDA and the LAMBDA helper functions (MAP, REDUCE, SCAN, BYROW, BYCOL, MAKEARRAY). */
-import { defFn } from './registry';
+import { defFn, getFn } from './registry';
 import {
   bool, fail, isErr, isLambda, isMatrix, isRef, iterValues, toMatrix, toScalar, num, int, compare, ERR, CellError,
   type Ctx, type Value, type LambdaV,
 } from '../values';
 import type { Node } from '../parser';
 import type { Matrix, Scalar } from '../../model/types';
+
+/**
+ * The function argument of a LAMBDA helper: a LAMBDA, or the bare name of a function (BYROW(range, SUM)), which
+ * arrives as #NAME? carrying the name and stands for a LAMBDA that passes its arguments on to that function.
+ */
+function lambdaArg(v: Value | undefined, arity: number): LambdaV | null {
+  if (v && isLambda(v)) return v;
+  const e = v as unknown as { code?: string; detail?: string };
+  if (v instanceof CellError && e.code === '#NAME?' && e.detail && getFn(e.detail)) {
+    const params = Array.from({ length: arity }, (_, i) => `_X${i}`);
+    return { k: 'lambda', params, body: { t: 'fn', name: String(e.detail).toUpperCase(), args: params.map((name) => ({ t: 'name', name })) }, scope: null } as LambdaV;
+  }
+  return null;
+}
+
+/** One result of a LAMBDA helper's function: a single value; an array of several is #CALC!, not its first cell. */
+function oneValue(v: Value, ctx: Ctx): Scalar {
+  if (isMatrix(v) && (v.length > 1 || (v[0]?.length ?? 0) > 1)) return ERR.calc;
+  if (isRef(v) && (v.r2 > v.r1 || v.c2 > v.c1)) return ERR.calc;
+  return scalarOf(v, ctx);
+}
 
 /** Evaluates a node to a scalar for a condition (single cell or 1x1). */
 function evalScalar(n: Node, ctx: Ctx): Scalar {
@@ -190,44 +211,49 @@ defFn([
     name: 'MAP', min: 2, max: 254, category: 'Logical', desc: 'Applies a LAMBDA to each value of one or more arrays.', params: ['array1', '[array2]', '...', 'lambda'], arrays: 'all',
     impl: (args, ctx) => {
       const fn = args[args.length - 1];
-      if (!isLambda(fn)) return ERR.value;
+      const f = lambdaArg(fn, args.length - 1);
+      if (!f) return ERR.value;
       const mats = args.slice(0, -1).map((a) => toMatrix(a, ctx));
       const rows = mats[0].length, cols = mats[0][0]?.length ?? 0;
-      return mats[0].map((row, r) => row.map((_, c) => scalarOf(ctx.callLambda(fn, mats.map((m) => (m[r]?.[c] ?? ERR.na))), ctx))).slice(0, rows).map((x) => x.slice(0, cols));
+      return mats[0].map((row, r) => row.map((_, c) => oneValue(ctx.callLambda(f, mats.map((m) => (m[r]?.[c] ?? ERR.na))), ctx))).slice(0, rows).map((x) => x.slice(0, cols));
     },
   },
   {
     name: 'REDUCE', min: 3, max: 3, category: 'Logical', desc: 'Reduces an array to an accumulated value with a LAMBDA.', params: ['initial_value', 'array', 'lambda'], arrays: [1],
     impl: ([init, arr, fn], ctx) => {
-      if (!isLambda(fn)) return ERR.value;
+      const f = lambdaArg(fn, 2);
+      if (!f) return ERR.value;
       let acc: Value = init ?? 0;
-      for (const row of toMatrix(arr, ctx)) for (const x of row) acc = ctx.callLambda(fn, [acc, x]);
+      for (const row of toMatrix(arr, ctx)) for (const x of row) acc = ctx.callLambda(f, [acc, x]);
       return acc;
     },
   },
   {
     name: 'SCAN', min: 3, max: 3, category: 'Logical', desc: 'Applies a LAMBDA to each value and returns each intermediate value.', params: ['initial_value', 'array', 'lambda'], arrays: [1],
     impl: ([init, arr, fn], ctx) => {
-      if (!isLambda(fn)) return ERR.value;
+      const f = lambdaArg(fn, 2);
+      if (!f) return ERR.value;
       let acc: Value = init ?? 0;
-      return toMatrix(arr, ctx).map((row) => row.map((x) => { acc = ctx.callLambda(fn, [acc, x]); return scalarOf(acc, ctx); }));
+      return toMatrix(arr, ctx).map((row) => row.map((x) => { acc = ctx.callLambda(f, [acc, x]); return oneValue(acc, ctx); }));
     },
   },
   {
     name: 'BYROW', min: 2, max: 2, category: 'Logical', desc: 'Applies a LAMBDA to each row and returns a column of results.', params: ['array', 'lambda'], arrays: [0],
     impl: ([arr, fn], ctx) => {
-      if (!isLambda(fn)) return ERR.value;
-      return toMatrix(arr, ctx).map((row) => [scalarOf(ctx.callLambda(fn, [[row]]), ctx)]);
+      const f = lambdaArg(fn, 1);
+      if (!f) return ERR.value;
+      return toMatrix(arr, ctx).map((row) => [oneValue(ctx.callLambda(f, [[row]]), ctx)]);
     },
   },
   {
     name: 'BYCOL', min: 2, max: 2, category: 'Logical', desc: 'Applies a LAMBDA to each column and returns a row of results.', params: ['array', 'lambda'], arrays: [0],
     impl: ([arr, fn], ctx) => {
-      if (!isLambda(fn)) return ERR.value;
+      const f = lambdaArg(fn, 1);
+      if (!f) return ERR.value;
       const m = toMatrix(arr, ctx);
       const cols = m[0]?.length ?? 0;
       const out: Scalar[] = [];
-      for (let c = 0; c < cols; c++) out.push(scalarOf(ctx.callLambda(fn, [m.map((r) => [r[c]])]), ctx));
+      for (let c = 0; c < cols; c++) out.push(oneValue(ctx.callLambda(f, [m.map((r) => [r[c]])]), ctx));
       return [out];
     },
   },

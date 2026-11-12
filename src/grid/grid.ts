@@ -947,15 +947,21 @@ export class Grid {
       return;
     }
     let { r, c } = s;
-    if (vertical) {
-      r += d;
-      if (r > rg.r2) { r = rg.r1; c++; if (c > rg.c2) c = rg.c1; }
-      if (r < rg.r1) { r = rg.r2; c--; if (c < rg.c1) c = rg.c2; }
-    } else {
-      c += d;
-      if (c > rg.c2) { c = rg.c1; r++; if (r > rg.r2) r = rg.r1; }
-      if (c < rg.c1) { c = rg.c2; r--; if (r < rg.r1) r = rg.r2; }
-    }
+    const step = () => {
+      if (vertical) {
+        r += d;
+        if (r > rg.r2) { r = rg.r1; c++; if (c > rg.c2) c = rg.c1; }
+        if (r < rg.r1) { r = rg.r2; c--; if (c < rg.c1) c = rg.c2; }
+      } else {
+        c += d;
+        if (c > rg.c2) { c = rg.c1; r++; if (r > rg.r2) r = rg.r1; }
+        if (c < rg.c1) { c = rg.c2; r--; if (r < rg.r1) r = rg.r2; }
+      }
+    };
+    // Hidden rows and columns are passed over (bounded, in case everything in the selection is hidden).
+    const hidden = () => this.sheet.hiddenRows.has(r) || this.sheet.hiddenCols.has(c);
+    step();
+    for (let n = 0; hidden() && n < 20000; n++) step();
     s.r = r; s.c = c;
     this.scrollIntoView(r, c);
     this.invalidate(); this.app.refresh();

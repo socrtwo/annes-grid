@@ -66,6 +66,7 @@ export class CellEditor {
   // ------------------------------------------------------------------------------------------
 
   start(r: number, c: number, opts: { mode: 'enter' | 'edit'; text?: string; fromBar?: boolean }): void {
+    (this as any).lastTyped = ''; // AutoComplete compares with what was typed in this edit, not the one before
     const g = this.g;
     const s = g.sheet;
     this.active = true;

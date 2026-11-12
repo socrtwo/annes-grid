@@ -51,6 +51,11 @@ export function findReplaceAll(app: App, o: FindReplaceOptions): Record<string, 
       for (const [k, cell] of [...s.cells]) {
         const r = keyRow(k), c = keyCol(k);
         if (!inScope(r, c) || !canChange(s, r, c)) continue;
+        // A plain number is searched as the digits it shows; a hit is stored as a number again when it still is one.
+        if (o.inValues !== false && cell.f == null && typeof cell.v === 'number' && !/[ymdhs]/i.test((s.styleOf(r, c).numFmt || '').replace(/"[^"]*"|\[[^\]]*\]/g, ''))) {
+          const t = replaceText(String(cell.v), o);
+          if (t != null) { const n = t.trim() !== '' && Number.isFinite(Number(t)) ? Number(t) : null; s.set(r, c, { ...cell, v: n ?? t }); counts.values++; }
+        }
         if (o.inValues !== false && cell.f == null && typeof cell.v === 'string') { const t = replaceText(cell.v, o); if (t != null) { const next: Cell = { ...cell, v: t }; delete next.rich; s.set(r, c, next); counts.values++; } }
         if (o.inFormulas && cell.f != null) { const t = replaceText(cell.f, o); if (t != null) { s.set(r, c, { ...cell, f: t }); counts.formulas++; } }
         if (o.inLinks && cell.link) { const t = replaceText(cell.link, o); if (t != null) { s.set(r, c, { ...s.get(r, c)!, link: t }); counts.links++; } }

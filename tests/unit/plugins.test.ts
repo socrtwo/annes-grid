@@ -9,7 +9,7 @@ import { defaultPrefs } from '../../src/prefs';
 import { getCommand, allCommands } from '../../src/commands/registry';
 import { DEFAULT_TABS } from '../../src/ui/ribbonLayout';
 import { cellMatches, findMatching, resetLastCell, uniqueSheetName, menuOf } from '../../src/commands/utilities';
-import { replaceText, sortOrderBy, reshape } from '../../src/commands/utilities2';
+import { replaceText, sortOrderBy, reshape, findReplaceAll } from '../../src/commands/utilities2';
 import { applyNumOp, convertUnit, toBase, fromBase, insertAt, removeByPosition, nthWord, between, swapAround, keepOnly, wordCount, changeRefStyle, expandNames, applyNamesText } from '../../src/commands/utilities3';
 import { decodeEntities, encodeEntities, stripTags, urlDecode, urlParts, htmlTable } from '../../src/commands/utilities4';
 import { prettyFormula, toHalfWidth, toFullWidth, chemicalRuns, missingNumbers, combinations, mergeTables, splitName, lookupFormula, rowPasses, encryptText, decryptText, runSql } from '../../src/commands/plus';
@@ -689,5 +689,35 @@ describe('review fixes: filtered lists, protection and tools', () => {
     const n = book.sheets.length;
     await app.exec('util.sheetIndex');
     expect(book.sheets.length).toBe(n);
+  });
+});
+
+describe('review fixes: smaller tools', () => {
+  it('renames a sheet when only the letter case changes', async () => {
+    const { book } = fakeApp();
+    expect(uniqueSheetName(book, 'SHEET1', undefined, book.sheets[0])).toBe('SHEET1');
+    expect(uniqueSheetName(book, 'SHEET1')).toBe('SHEET1 (2)');
+  });
+  it('handles emoji, comparisons, rounding, fractions, title case and coordinates', () => {
+    expect(encodeEntities('😀')).toBe('&#128512;');
+    expect(stripTags('if a < b and c > d')).toBe('if a < b and c > d');
+    expect(stripTags('<p>Hi <b>there</b></p>')).toBe('Hi there');
+    expect(applyNumOp(1.005, 'round', 2)).toBe(1.01);
+    expect(applyNumOp(0.285, 'round', 2)).toBe(0.29);
+    expect(applyNumOp(-2.5, 'round', 0)).toBe(-3);
+    expect(applyNumOp(2.4, 'round', 0)).toBe(2);
+    expect(fractionGlyphs('1/2 cup')).toBe('½ cup');
+    expect(fractionGlyphs('1/2/2024')).toBe('1/2/2024');
+    expect(fractionGlyphs('http://x.com/1/2')).toBe('http://x.com/1/2');
+    expect(titleCase('THE LORD OF THE RINGS')).toBe('The Lord of the Rings');
+    expect(titleCase('annual report for NASA')).toBe('Annual Report for NASA');
+  });
+  it('replaces inside plain numbers too', () => {
+    const { app, put, cell } = fakeApp();
+    put('A1', 2023); put('A2', 'FY2023'); put('A3', '=2023+1');
+    findReplaceAll(app, { find: '2023', replace: '2024', scope: 'sheet', inValues: true, inFormulas: true } as any);
+    expect(cell('A1')!.v).toBe(2024);
+    expect(cell('A2')!.v).toBe('FY2024');
+    expect(cell('A3')!.f).toBe('2024+1');
   });
 });

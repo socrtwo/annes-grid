@@ -164,3 +164,21 @@ describe('HTML pages', () => {
     expect(jobs[0].spec).toMatchObject({ r1: 0, r2: 4, c1: 0, c2: 1 });
   });
 });
+
+describe('fit to a number of pages', () => {
+  it('never runs over the requested page count', () => {
+    for (const [rows, cols, wide, tall] of [[99, 3, 1, 2], [5, 21, 2, 0], [200, 3, 0, 3], [130, 14, 1, 3], [61, 25, 2, 2]] as const) {
+      const { s } = sheetWith(rows, cols);
+      s.print.fitWide = wide; s.print.fitTall = tall;
+      const l = layoutPages(s);
+      const acrossPages = new Set(l.pages.map((p) => p.c1)).size, downPages = new Set(l.pages.map((p) => p.r1)).size;
+      if (wide) expect(acrossPages, `${rows}x${cols} wide`).toBeLessThanOrEqual(wide);
+      if (tall) expect(downPages, `${rows}x${cols} tall`).toBeLessThanOrEqual(tall);
+    }
+  });
+  it('keeps to the page count with repeated title rows', () => {
+    const { s } = sheetWith(200, 3);
+    s.print.titleRows = '$1:$3'; s.print.fitTall = 3;
+    expect(new Set(layoutPages(s).pages.map((p) => p.r1)).size).toBeLessThanOrEqual(3);
+  });
+});

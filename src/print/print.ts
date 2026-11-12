@@ -475,7 +475,7 @@ export async function showPrintPreview(app: App): Promise<void> {
   let pages: HTMLElement[] = [];
 
   const view = h('div', { class: 'ql-pp-view', tabindex: '0', 'aria-label': 'Page preview' });
-  const counter = h('input', { class: 'ql-pp-counter', type: 'number', min: '1', 'aria-label': 'Page number' }) as HTMLInputElement;
+  const counter = h('input', { class: 'ql-pp-counter', type: 'number', min: '1', 'aria-label': 'Page number', 'data-own-enter': '' }) as HTMLInputElement;
   const total = h('span', { class: 'ql-help' });
   const zoomBtn = h('button', { class: 'ql-btn', type: 'button', title: 'Zoom to page' }, icon('zoom_in'), ' Zoom');
   const marginsBtn = h('button', { class: 'ql-btn', type: 'button', title: 'Show margins' }, icon('border_outer'), ' Margins');

@@ -435,6 +435,8 @@ export class Grid {
   }
 
   private onPointerDown(e: PointerEvent): void {
+    // A press on the cells takes the selection back from a chart or picture.
+    if (this.objects.selected) this.objects.select(null);
     const { x, y } = this.local(e);
     this.lastPointer = { x, y };
     this.touchMode = e.pointerType === 'touch' || e.pointerType === 'pen';
@@ -796,6 +798,15 @@ export class Grid {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (this.editor.active) return; // the editor handles its own keys
+    // A selected chart or picture takes the keys, not the cell behind it: Delete removes the object, typing does nothing.
+    const obj = this.objects.selected;
+    if (obj) {
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.app.exec('object.delete', { id: obj }); return; }
+      if (e.key === 'Escape') { e.preventDefault(); this.objects.select(null); return; }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) { e.preventDefault(); return; }
+      // Moving with the keyboard goes back to the cells.
+      if (/^(Arrow|Page|Home|End|Tab|Enter)/.test(e.key)) this.objects.select(null);
+    }
     const k = keyName(e);
     if (!k) return;
     const s = this.sel;

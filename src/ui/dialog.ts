@@ -163,11 +163,24 @@ export function openDialog(opts: DialogOptions): Promise<Record<string, any> | n
     }
     const onKey = (e: KeyboardEvent) => {
       if (dialogStack[dialogStack.length - 1] !== overlay) return;
+      // Escape closes an open drop-down menu first, not the dialog under it.
+      if (e.key === 'Escape' && document.querySelector('.ql-menu')) { e.preventDefault(); e.stopImmediatePropagation(); closeMenus(); return; }
+      // Tab stays inside the dialog.
+      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const stops = [...box.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLInputElement).disabled && x.offsetParent !== null);
+        if (stops.length) {
+          const first = stops[0], last = stops[stops.length - 1], cur = document.activeElement as HTMLElement | null;
+          if (!cur || !box.contains(cur)) { e.preventDefault(); first.focus(); }
+          else if (e.shiftKey && cur === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && cur === last) { e.preventDefault(); first.focus(); }
+        }
+        return;
+      }
       // Shortcut capture boxes (Customize Keyboard) take Enter and modified keys themselves; plain Escape still closes.
       const plainEsc = e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
       if ((e.target as HTMLElement | null)?.closest?.('[data-capture-keys]') && !plainEsc) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); finish(null); }
-      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLButtonElement) && opts.ok !== false) {
+      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLButtonElement) && !(e.target as HTMLElement | null)?.closest?.('[data-own-enter]') && opts.ok !== false) {
         e.preventDefault(); e.stopImmediatePropagation(); okClick();
       }
     };

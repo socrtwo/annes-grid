@@ -80,7 +80,14 @@ async function start() {
 start();
 
 if (!isNative() && !isCapacitor() && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !import.meta.env.DEV) {
-  window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => undefined); });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+    // The files of this first load were fetched before the worker existed: hand it the list so they are cached too.
+    navigator.serviceWorker.ready.then((reg) => {
+      const urls = [...new Set(performance.getEntriesByType('resource').map((x) => x.name).filter((u) => u.startsWith(location.origin)))];
+      reg.active?.postMessage({ type: 'precache', urls });
+    }).catch(() => undefined);
+  });
 }
 
 onBackButton(() => {

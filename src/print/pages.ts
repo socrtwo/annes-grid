@@ -168,7 +168,19 @@ export function layoutPages(sheet: Sheet, opts: { areas?: Range[]; ignoreArea?: 
   const p = sheet.print;
   const areas = opts.areas || printAreas(sheet, opts.ignoreArea);
   const [w, hgt] = paperInches(p);
-  const scale = p.fitWide || p.fitTall ? (areas.length ? fitScale(sheet, areas, w, hgt) : 100) : Math.max(10, Math.min(400, p.scale || 100));
+  if (!(p.fitWide || p.fitTall)) return layoutAt(sheet, areas, Math.max(10, Math.min(400, p.scale || 100))).pages;
+  // The fit scale assumes rows and columns could be split between pages; they cannot, so each page wastes part of a
+  // row or column and the result can run one page over. The scale comes down until the pages really fit.
+  let scale = areas.length ? fitScale(sheet, areas, w, hgt) : 100;
+  let l = layoutAt(sheet, areas, scale);
+  while (l.over && scale > 10) l = layoutAt(sheet, areas, --scale);
+  return l.pages;
+}
+
+function layoutAt(sheet: Sheet, areas: Range[], scale: number): { pages: SheetPages; over: boolean } {
+  const p = sheet.print;
+  const [w, hgt] = paperInches(p);
+  let over = false;
   const k = scale / 100;
   const availW = ((w - p.margins.left - p.margins.right) * 96) / k - (p.headings ? HEADING_W : 0);
   const availH = ((hgt - p.margins.top - p.margins.bottom) * 96) / k - (p.headings ? HEADING_H : 0);
@@ -183,6 +195,7 @@ export function layoutPages(sheet: Sheet, opts: { areas?: Range[]; ignoreArea?: 
     const cb = axisBreaks(a.c1, a.c2, (c) => sheet.colWidth(c), availW, fit ? [] : sheet.colBreaks, (start) => spanSize(sheet, titleCols, 'col', start));
     rowsAll.push(...rb); colsAll.push(...cb);
     const rs = [a.r1, ...rb], cs = [a.c1, ...cb];
+    if ((p.fitTall && rs.length > p.fitTall) || (p.fitWide && cs.length > p.fitWide)) over = true;
     const rSpans = rs.map((r, i) => [r, (rs[i + 1] ?? a.r2 + 1) - 1] as [number, number]);
     const cSpans = cs.map((c, i) => [c, (cs[i + 1] ?? a.c2 + 1) - 1] as [number, number]);
     const push = (rr: [number, number], cc: [number, number]) => {
@@ -195,7 +208,7 @@ export function layoutPages(sheet: Sheet, opts: { areas?: Range[]; ignoreArea?: 
     if (p.order === 'overThenDown') { for (const rr of rSpans) for (const cc of cSpans) push(rr, cc); }
     else { for (const cc of cSpans) for (const rr of rSpans) push(rr, cc); }
   });
-  return { scale, areas, rowBreaks: [...new Set(rowsAll)].sort((a, b) => a - b), colBreaks: [...new Set(colsAll)].sort((a, b) => a - b), pages, titleRows, titleCols };
+  return { pages: { scale, areas, rowBreaks: [...new Set(rowsAll)].sort((a, b) => a - b), colBreaks: [...new Set(colsAll)].sort((a, b) => a - b), pages, titleRows, titleCols }, over };
 }
 
 /** Automatic plus manual page breaks (row and column indexes where a new page starts). */

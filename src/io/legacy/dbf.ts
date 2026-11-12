@@ -97,6 +97,8 @@ export function importDbf(data: ArrayBuffer | Uint8Array, name = '', warnings: s
       // dBASE III-5 and FoxPro: type at 11, length at 16, decimals at 17; dBASE 7: 32, 33, 34.
       const lo = dbase7 ? 33 : 16;
       const f: Field = { name: '', raw: nameBytes(b, p, tp), type: String.fromCharCode(b[p + tp]), len: b[p + lo], dec: b[p + lo + 1], off, nullBit: -1, varBit: -1 };
+      // Clipper and FoxPro: a character field longer than 255 keeps the high byte of its length in the decimals byte.
+      if (f.type === 'C' && !dbase7) { f.len |= f.dec << 8; f.dec = 0; }
       if (vfp && u32(b, p + 12) > 0) f.off = u32(b, p + 12);
       off = Math.max(off, f.off + f.len);
       fields.push(f);
@@ -114,6 +116,8 @@ export function importDbf(data: ArrayBuffer | Uint8Array, name = '', warnings: s
   }
   if (!fields.length) throw new Error('The table has no fields.');
   if (rlen < 1) throw new Error('The table header is damaged (record length 0).');
+  // A record cannot be shorter than its fields: a damaged length would otherwise read one overlapping "record" per byte.
+  rlen = Math.max(rlen, ...fields.map((f) => f.off + f.len));
   const available = Math.max(0, Math.floor((b.length - hlen) / rlen));
   if (nrec > available) {
     if (nrec - available > 1) warnings.push(`The table says it has ${nrec} records but the file holds ${available}; the rest is lost.`);
@@ -220,7 +224,7 @@ function fieldValue(f: Field, raw: Uint8Array, dec: Decoder, memo: ((block: numb
       return null;
     }
     case 'M': case 'G': case 'P': case 'B': {
-      if (f.type === 'B' && vfp) return { v: dv(raw).getFloat64(0, true) };
+      if (f.type === 'B' && vfp) return raw.length < 8 ? null : { v: dv(raw).getFloat64(0, true) };
       let block: number;
       if (raw.length === 4) block = u32(raw, 0);
       else { const t = text().trim(); if (!t) return null; block = parseInt(t, 10); }
@@ -238,12 +242,14 @@ function fieldValue(f: Field, raw: Uint8Array, dec: Decoder, memo: ((block: numb
     }
     case 'O': {
       // dBASE 7 double: big-endian with the sign bit flipped so that byte order sorts.
+      if (raw.length < 8) return null;
       const c = Uint8Array.from(raw.subarray(0, 8));
       if (c[0] & 0x80) c[0] ^= 0x80; else for (let i = 0; i < 8; i++) c[i] = ~c[i] & 0xff;
       return { v: new DataView(c.buffer).getFloat64(0, false) };
     }
     case 'T': case '@': {
       let day: number, ms: number;
+      if (raw.length < 8) return null;
       if (f.type === 'T') { day = u32(raw, 0); ms = u32(raw, 4); }
       else { const c = Uint8Array.from(raw.subarray(0, 8)); if (c[0] & 0x80) c[0] ^= 0x80; const t = new DataView(c.buffer).getFloat64(0, false); day = Math.floor(t / 86400000); ms = t - day * 86400000; }
       if (!day) return null;

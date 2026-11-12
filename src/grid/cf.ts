@@ -189,7 +189,7 @@ export class CFEvaluator {
       case 'dataBar': {
         if (typeof v !== 'number') return null;
         const s = this.ruleStats(sheet, rule);
-        const lo = Math.min(0, this.stopValue(sheet, rule, s, 0, 'min')), hi = this.stopValue(sheet, rule, s, 1, 'max');
+        const lo = Math.min(0, this.stopValue(sheet, rule, s, 0, 'min')), hi = Math.max(0, this.stopValue(sheet, rule, s, 1, 'max'));
         const span = hi - lo || 1;
         const axis = lo < 0 ? -lo / span : 0;
         const pct = clamp01(Math.abs(v) / span);

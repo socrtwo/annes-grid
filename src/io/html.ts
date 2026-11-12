@@ -6,6 +6,7 @@ import { CellError, type Cell, type CellStyle, type Border } from '../model/type
 import { cellKey, keyRow, keyCol, type Range } from '../model/address';
 import { formatValue } from '../model/numfmt';
 import { convertField } from './csv';
+import { isScriptUrl, safeNum } from '../util/sanitize';
 import { normColor } from './index';
 
 // --------------------------------------------------------------------------------------------
@@ -225,7 +226,7 @@ export function importHtml(text: string, warnings: string[] = [], opts: HtmlImpo
         if (s) cell.s = s;
         const a = Array.from(td.querySelectorAll('a[href]')).find((x) => !x.classList.contains('comment-indicator'));
         const href = a?.getAttribute('href');
-        if (href && !/^\s*javascript:/i.test(href)) cell.link = href;
+        if (href && !isScriptUrl(href)) cell.link = href;
         const cm = td.querySelector('comment');
         if (cm && cm.textContent?.trim()) sheet.comments.set(cellKey(r, c), { author: '', text: cm.textContent.trim(), time: 0, note: true });
         if (cell.v != null || cell.s || cell.link || cell.f) sheet.cells.set(cellKey(r, c), cell);
@@ -320,11 +321,11 @@ function sheetTable(sheet: Sheet, range?: Range | null): string {
     for (let r = m.r1; r <= m.r2; r++) for (let c = m.c1; c <= m.c2; c++) if (r !== m.r1 || c !== m.c1) covered.add(cellKey(r, c));
   }
   const out: string[] = ['<table style="border-collapse:collapse">', '<colgroup>'];
-  for (let c = rg.c1; c <= rg.c2; c++) if (!sheet.hiddenCols.has(c)) out.push(`<col style="width:${sheet.colWidth(c)}px">`);
+  for (let c = rg.c1; c <= rg.c2; c++) if (!sheet.hiddenCols.has(c)) out.push(`<col style="width:${safeNum(sheet.colWidth(c), 0, 0, 1e5)}px">`);
   out.push('</colgroup>');
   for (let r = rg.r1; r <= rg.r2; r++) {
     if (sheet.hiddenRows.has(r)) continue;
-    const h = sheet.rowH.get(r);
+    const h = safeNum(sheet.rowH.get(r), 0, 0, 1e5);
     out.push(h ? `<tr style="height:${h}px">` : '<tr>');
     for (let c = rg.c1; c <= rg.c2; c++) {
       if (sheet.hiddenCols.has(c)) continue;
@@ -338,7 +339,7 @@ function sheetTable(sheet: Sheet, range?: Range | null): string {
       const css = styleCss(st, d.isNumber);
       const cell = sheet.get(r, c);
       let body = escHtml(d.text).replace(/\n/g, '<br>');
-      if (cell?.link && !/^\s*javascript:/i.test(cell.link)) body = `<a href="${escHtml(cell.link)}">${body}</a>`;
+      if (cell?.link && !isScriptUrl(cell.link)) body = `<a href="${escHtml(cell.link)}">${body}</a>`;
       out.push(`<td${span}${css ? ` style="${escHtml(css)}"` : ''}>${body}</td>`);
     }
     out.push('</tr>');

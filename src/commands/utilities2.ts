@@ -106,6 +106,7 @@ async function advancedSort(app: App, arg?: { key: 'length' | 'lastWord' | 'natu
 function swapRanges(app: App, a: Range, b: Range, sa: Sheet, sb: Sheet): boolean {
   if (a.r2 - a.r1 !== b.r2 - b.r1 || a.c2 - a.c1 !== b.c2 - b.c1) { toast('The two ranges must be the same size.'); return false; }
   if (hasMergeIn(sa, a) || hasMergeIn(sb, b)) { toast('Unmerge the cells first.'); return false; }
+  if (sa === sb && a.r1 <= b.r2 && a.r2 >= b.r1 && a.c1 <= b.c2 && a.c2 >= b.c1) { toast('The two ranges overlap, so they cannot be swapped.'); return false; }
   if (!checkWritable(app, [a], sa) || !checkWritable(app, [b], sb)) return false;
   const A = blockOf(sa, a), B = blockOf(sb, b);
   app.book.transact('Swap Ranges', () => {

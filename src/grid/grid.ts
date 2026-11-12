@@ -805,6 +805,8 @@ export class Grid {
     if (e.key === ' ' && !ctrl && !e.altKey && !shift && this.sheet.styleOf(s.r, s.c).checkbox) { e.preventDefault(); this.app.exec('cell.toggleCheckbox', { r: s.r, c: s.c }); return; }
     // 1-2-3 style: "/" opens the slash menu when that option is on.
     if (e.key === '/' && !ctrl && !e.altKey && this.app.prefs.slashKey) { e.preventDefault(); this.app.exec('tools.slashMenu'); return; }
+    // Shift+Space is a shortcut (select the row), not a typed space.
+    if (e.key === ' ' && shift && !ctrl && !e.altKey && this.app.handleKey(k)) { e.preventDefault(); return; }
     // Typing starts editing
     if (!ctrl && !e.altKey && e.key.length === 1 && !this.app.isReadOnly()) {
       e.preventDefault();

@@ -480,6 +480,9 @@ function addSheet(app: App, name: string, after: number): Sheet {
   return s;
 }
 
+/** A sheet's content for a copy: without its id, so the copy keeps its own (undo finds a sheet by id). */
+function copyJSON(src: Sheet): any { const j: any = src.toJSON(); delete j.id; return j; }
+
 export function uniqueSheetName(book: import('../model/workbook').Workbook, base: string, taken: Set<string> = new Set()): string {
   const clean = (validSheetName(base) ? base : base.replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31)) || 'Sheet';
   const has = (n: string) => !!book.sheetByName(n) || taken.has(n.toLowerCase());
@@ -555,7 +558,7 @@ defTools([
         let at = book.activeSheet;
         for (const n of names) {
           const name = uniqueSheetName(book, n, taken); taken.add(name.toLowerCase());
-          const s = o.copyActive ? (() => { const j = src.toJSON(); const c = new Sheet(book, name); c.loadJSON(j); c.name = name; (c as any).id = c.id; return c; })() : new Sheet(book, name);
+          const s = o.copyActive ? (() => { const c = new Sheet(book, name); c.loadJSON(copyJSON(src)); c.name = name; return c; })() : new Sheet(book, name);
           if (o.copyActive) { s.name = name; }
           book.sheets.splice(++at, 0, s);
         }
@@ -631,7 +634,7 @@ defTools([
       const o = await argOrAsk(arg, async () => { const r = await openDialog({ title: 'Copy Sheet Several Times', fields: [{ key: 'count', label: 'Copies', type: 'number', value: 3, min: 1, max: 100 }, { key: 'pattern', label: 'Names ({name} = this sheet, {n} = number)', type: 'text', value: '{name} ({n})' }] }); return r ? { count: Number(r.count) || 1, pattern: r.pattern } : null; });
       if (!o) return;
       const book = app.book; const src = app.sheet; const taken = new Set<string>();
-      book.transact('Copy Sheet', () => { book.recordBook(); let at = book.activeSheet; for (let i = 1; i <= o.count; i++) { const name = uniqueSheetName(book, (o.pattern || '{name} ({n})').replace(/\{name\}/g, src.name).replace(/\{n\}/g, String(i + 1)), taken); taken.add(name.toLowerCase()); const c = new Sheet(book, name); c.loadJSON(src.toJSON()); c.name = name; book.sheets.splice(++at, 0, c); } });
+      book.transact('Copy Sheet', () => { book.recordBook(); let at = book.activeSheet; for (let i = 1; i <= o.count; i++) { const name = uniqueSheetName(book, (o.pattern || '{name} ({n})').replace(/\{name\}/g, src.name).replace(/\{n\}/g, String(i + 1)), taken); taken.add(name.toLowerCase()); const c = new Sheet(book, name); c.loadJSON(copyJSON(src)); c.name = name; book.sheets.splice(++at, 0, c); } });
       app.ui.rebuild(); app.refresh(); toast(`${plural(o.count, 'copy', 'copies')} made`);
     },
   },

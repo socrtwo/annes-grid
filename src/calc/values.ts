@@ -9,6 +9,7 @@ import type { Sheet, Workbook } from '../model/workbook';
 import type { Node } from './parser';
 import { parseDateTime } from '../model/dates';
 import { parseNumberInput } from '../model/numfmt';
+import { MAX_ROWS, MAX_COLS } from '../model/address';
 
 export interface RefV { k: 'ref'; sheet: Sheet; r1: number; c1: number; r2: number; c2: number; sheets?: Sheet[] }
 export interface MultiRefV { k: 'refs'; areas: RefV[] }
@@ -67,8 +68,10 @@ export function toMatrix(v: Value, ctx: Ctx, clip = true): Matrix {
     let { r2, c2 } = v;
     if (clip) {
       const b = ctx.usedBounds(v.sheet);
-      r2 = Math.min(r2, Math.max(v.r1, b.r2));
-      c2 = Math.min(c2, Math.max(v.c1, b.c2));
+      // Only open-ended references shrink: A1:A10 must stay ten rows, or arrays built from it
+      // come out the wrong size and pair up with the wrong cells.
+      if (v.r2 >= MAX_ROWS - 1) r2 = Math.min(r2, Math.max(v.r1, b.r2));
+      if (v.c2 >= MAX_COLS - 1) c2 = Math.min(c2, Math.max(v.c1, b.c2));
     }
     const out: Matrix = [];
     for (let r = v.r1; r <= r2; r++) {

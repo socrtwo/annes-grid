@@ -14,6 +14,7 @@ export function keyName(e: KeyboardEvent): string | null {
   if (e.code === 'Comma') base = ',';
   if (e.code === 'Equal') base = '=';
   if (e.code === 'Minus') base = '-';
+  if (e.code === 'Semicolon') base = ';';
   const mac = isMac();
   // AltGr (reported as Ctrl+Alt on Windows) and macOS Option type characters such as \ ] } @ ≠:
   // when the key produced something other than its layout-stable base, it is text, not a shortcut.

@@ -303,7 +303,9 @@ describe('date and time functions', () => {
     expect(b.val('NETWORKDAYS(DATE(2024,3,31),DATE(2024,3,1))')).toBe(-21);
     expect(b.val('NETWORKDAYS.INTL(DATE(2024,3,1),DATE(2024,3,31),11)')).toBe(26);
     expect(b.val('NETWORKDAYS.INTL(DATE(2024,3,1),DATE(2024,3,31),"0000011")')).toBe(21);
-    expect(b.val('NETWORKDAYS.INTL(DATE(2024,3,1),DATE(2024,3,31),"1111111")')).toBe('#VALUE!');
+    // Every day a weekend: there are no working days to count, but nothing is wrong with the request.
+    expect(b.val('NETWORKDAYS.INTL(DATE(2024,3,1),DATE(2024,3,31),"1111111")')).toBe(0);
+    expect(b.val('WORKDAY.INTL(DATE(2024,3,1),5,"1111111")')).toBe('#VALUE!');
     expect(b.val('NETWORKDAYS.INTL(DATE(2024,3,1),DATE(2024,3,31),8)')).toBe('#NUM!');
     expect(b.val('WORKDAY(DATE(2024,3,15),1)')).toBe(45369); // Monday 18th
     expect(b.val('WORKDAY(DATE(2024,3,15),3,H1:H2)')).toBe(45373); // skips 19th, 20th

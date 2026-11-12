@@ -680,8 +680,10 @@ class Reader {
       return nm.name;
     };
     const readArrayConst = (): string => {
-      const cols = xc.u8() + (b8 ? 1 : 1);
-      const rows = xc.u16() + 1;
+      // BIFF8 stores the last column and row index; earlier versions store the counts, with 0 columns meaning 256.
+      const nc = xc.u8(), nr = xc.u16();
+      const cols = b8 ? nc + 1 : nc || 256;
+      const rows = b8 ? nr + 1 : nr;
       const out: string[] = [];
       for (let i = 0; i < rows; i++) {
         const row: string[] = [];

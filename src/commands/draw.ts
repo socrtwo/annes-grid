@@ -15,7 +15,7 @@ import { newId } from '../model/workbook';
 import { objectHooks } from '../grid/objects';
 import { toast, promptDialog } from '../ui/dialog';
 import { h } from '../ui/dom';
-import { safeColor } from '../util/sanitize';
+import { safeColor, safeNum } from '../util/sanitize';
 
 // ============================================================================================
 // Ink data
@@ -164,7 +164,7 @@ function renderInk(d: DrawingObject): HTMLElement | null {
   if (d.kind !== 'ink') return null;
   const { strokes, w, h: hh } = parseInk(d.svg);
   const wrap = h('div', { class: 'ql-drawing-svg ql-ink' });
-  wrap.innerHTML = inkSvg(strokes, w || d.at.w, hh || d.at.h).replace('<svg ', `<svg width="${d.at.w}" height="${d.at.h}" `);
+  wrap.innerHTML = inkSvg(strokes, w || d.at.w, hh || d.at.h).replace('<svg ', `<svg width="${safeNum(d.at.w, 120, 1, 20000)}" height="${safeNum(d.at.h, 120, 1, 20000)}" `);
   return wrap;
 }
 objectHooks.render.push((d) => renderInk(d));

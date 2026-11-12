@@ -75,12 +75,13 @@ const WEEKEND_CODES: Record<number, number[]> = {
 };
 
 /** Weekend mask indexed by JS weekday (0=Sunday). */
-function weekendMask(v: Value | undefined): boolean[] {
+function weekendMask(v: Value | undefined, allowAll = false): boolean[] {
   const x = v === undefined ? 1 : S(v) === null ? 1 : S(v);
   const mask = [false, false, false, false, false, false, false];
   if (typeof x === 'string') {
     if (!/^[01]{7}$/.test(x)) return fail(ERR.value);
-    if (x === '1111111') return fail(ERR.value);
+    // Every day a weekend: no working day can ever be reached (WORKDAY.INTL), but the count of them is simply 0.
+    if (x === '1111111' && !allowAll) return fail(ERR.value);
     // String is Monday..Sunday
     for (let i = 0; i < 7; i++) if (x[i] === '1') mask[(i + 1) % 7] = true;
     return mask;
@@ -314,7 +315,7 @@ defFn([
   },
   {
     name: 'NETWORKDAYS.INTL', min: 2, max: 4, category: 'Date & Time', desc: 'Number of working days between two dates with custom weekend days.', params: ['start_date', 'end_date', '[weekend]', '[holidays]'], arrays: [3],
-    impl: ([s, e, w, h], ctx) => networkDays(dateArg(s, ctx), dateArg(e, ctx), weekendMask(w), holidaySet(h, ctx), ctx),
+    impl: ([s, e, w, h], ctx) => networkDays(dateArg(s, ctx), dateArg(e, ctx), weekendMask(w, true), holidaySet(h, ctx), ctx),
   },
   {
     name: 'WORKDAY', min: 2, max: 3, category: 'Date & Time', desc: 'Date a number of working days before or after a start date.', params: ['start_date', 'days', '[holidays]'], arrays: [2],

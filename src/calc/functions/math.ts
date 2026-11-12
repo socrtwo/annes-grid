@@ -363,7 +363,9 @@ const defs: FnDef[] = [
       const x = n0(a), d = n0(a, 1);
       if (d === 0) return ERR.div0;
       const q = Math.floor(snap(x / d));
-      const r = x - d * q;
+      let r = x - d * q;
+      // For a huge quotient the subtraction cancels to rubbish; the exact remainder is still available.
+      if (!(Math.abs(r) < Math.abs(d)) || (r !== 0 && (r < 0) !== (d < 0))) { r = x % d; if (r !== 0 && (r < 0) !== (d < 0)) r += d; }
       return Math.abs(r) < Math.abs(d) * 1e-15 ? 0 : r;
     },
   },

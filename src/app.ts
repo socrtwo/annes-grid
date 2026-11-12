@@ -199,7 +199,7 @@ export class App {
     if (!c) { toast(`Unknown command: ${id}`); return false; }
     if (c.edits && this.isReadOnly()) { toast('This workbook is read-only.'); return false; }
     if (c.isEnabled && !c.isEnabled(this)) { toast(`${c.label} is not available here.`); return false; }
-    if (c.edits !== false && this.grid?.editing && !c.noRecord && !id.startsWith('cell.') && !id.startsWith('edit.formula')) this.grid.commitEdit();
+    if (c.edits !== false && this.grid?.editing && !c.noRecord && !id.startsWith('cell.') && !id.startsWith('edit.formula') && !this.grid.commitEdit('none')) return false;
     if (this.recording && !c.noRecord && id !== 'dev.recordMacro' && id !== 'dev.stopRecording') this.recordStep(id, arg);
     if (!c.noRecord && id !== 'edit.repeat') this.lastCommand = { id, arg };
     try {

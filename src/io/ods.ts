@@ -1178,7 +1178,7 @@ function buildOds(book: Workbook, out: OdsOut, flat: boolean): { content: string
     tablesXml.push(x.join(''));
     if (sheet.filter) {
       const f = sheet.filter.range;
-      dbRanges.push(`<table:database-range table:name="__Anonymous_Sheet_DB__${si}" table:target-range-address="$${quoteOdfSheet(sheet.name)}.$${colName(f.c1)}$${f.r1 + 1}:.$${colName(f.c2)}$${f.r2 + 1}" table:display-filter-buttons="true"/>`);
+      dbRanges.push(`<table:database-range table:name="__Anonymous_Sheet_DB__${si}" table:target-range-address="${esc(`$${quoteOdfSheet(sheet.name)}.$${colName(f.c1)}$${f.r1 + 1}:.$${colName(f.c2)}$${f.r2 + 1}`)}" table:display-filter-buttons="true"/>`);
     }
   });
   const globalNames = book.names.filter((n) => n.sheet == null);
@@ -1223,7 +1223,7 @@ function groupRows(rows: string[], sheet: Sheet, _maxR: number): string {
 function nameXml(name: string, ref: string, baseSheet: string): string {
   const { sheet, ref: body } = splitSheetRef(ref.replace(/^=/, ''));
   const rg = parseRange(body);
-  const base = `$${quoteOdfSheet(sheet || baseSheet)}.$A$1`;
+  const base = esc(`$${quoteOdfSheet(sheet || baseSheet)}.$A$1`);
   if (rg && !/[(),]/.test(body)) {
     const sh = '$' + quoteOdfSheet(sheet || baseSheet);
     const abs = (r: number, c: number) => `$${colName(c)}$${r + 1}`;

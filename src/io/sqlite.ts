@@ -142,8 +142,12 @@ export function parseCreateTable(sql: string): { cols: string[]; rowidCol: numbe
   const body = open >= 0 && close > open ? sql.slice(open + 1, close) : '';
   const parts: string[] = [];
   let depth = 0, cur = '', q = '';
-  for (const ch of body) {
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
     if (q) { cur += ch; if (ch === q) q = ''; continue; }
+    // Comments are not part of the definition (and an apostrophe inside one is not a string).
+    if (ch === '-' && body[i + 1] === '-') { const e = body.indexOf('\n', i); i = e < 0 ? body.length : e; cur += ' '; continue; }
+    if (ch === '/' && body[i + 1] === '*') { const e = body.indexOf('*/', i + 2); i = e < 0 ? body.length : e + 1; cur += ' '; continue; }
     if (ch === '"' || ch === "'" || ch === '`') { q = ch; cur += ch; continue; }
     if (ch === '[') { q = ']'; cur += ch; continue; }
     if (ch === '(') depth++;
@@ -155,6 +159,7 @@ export function parseCreateTable(sql: string): { cols: string[]; rowidCol: numbe
   const cols: string[] = [];
   let rowidCol = -1;
   let pk: string[] = [];
+  const intCols = new Map<string, number>();
   const unq = (s: string) => s.replace(/^["'`[]|["'`\]]$/g, '');
   for (const p of parts) {
     const tblPk = /^(?:CONSTRAINT\s+\S+\s+)?PRIMARY\s+KEY\s*\(([^)]*)\)/i.exec(p);
@@ -163,10 +168,15 @@ export function parseCreateTable(sql: string): { cols: string[]; rowidCol: numbe
     const m = /^("(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|'[^']*'|\S+)\s*(.*)$/s.exec(p);
     if (!m) continue;
     const name = unq(m[1]).replace(/""/g, '"');
-    if (/^INTEGER\s+PRIMARY\s+KEY\b(?!\s+DESC)/i.test(m[2].trim())) rowidCol = cols.length;
+    // A column declared exactly INTEGER with PRIMARY KEY among its constraints is the rowid: its value is not in the record.
+    const isInteger = /^INTEGER\b(?!\s*\()/i.test(m[2].trim());
+    if (isInteger && /\bPRIMARY\s+KEY\b(?!\s+DESC)/i.test(m[2])) rowidCol = cols.length;
+    if (isInteger) intCols.set(name.toLowerCase(), cols.length);
     if (/\bPRIMARY\s+KEY\b/i.test(m[2])) pk = [name];
     cols.push(name);
   }
+  // PRIMARY KEY (id) as a table constraint makes an INTEGER column the rowid just the same.
+  if (rowidCol < 0 && pk.length === 1 && intCols.has(pk[0].toLowerCase())) rowidCol = intCols.get(pk[0].toLowerCase())!;
   const withoutRowid = /\)\s*WITHOUT\s+ROWID\s*;?\s*$/i.test(sql);
   return { cols, rowidCol: withoutRowid ? -1 : rowidCol, withoutRowid, pk };
 }

@@ -179,7 +179,7 @@ const wrap = (o: Out, parent: number, right = false) => (o.p < parent || (right 
 const call = (name: string, args: string[]): Out => ({ s: `${name}(${args.join(',')})`, p: ATOM });
 const isNum = (n: LNode | undefined): n is { k: 'num'; v: string } => n?.k === 'num';
 /** 1-2-3 offsets count from 0; the target counts from 1. */
-const plus1 = (n: LNode, s: string) => (isNum(n) ? String(+n.v + 1) : `${s}+1`);
+const plus1 = (n: LNode, s: string) => (isNum(n) ? String(+n.v + 1) : n.k === 'bin' || n.k === 'un' ? `(${s})+1` : `${s}+1`);
 const neg = (n: LNode, s: string) => (isNum(n) ? '-' + n.v : `-(${s})`);
 
 /** Same name and meaning in both languages. */

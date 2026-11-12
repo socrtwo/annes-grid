@@ -92,6 +92,7 @@ export function applyStyle(app: App, patch: Partial<CellStyle> | ((st: CellStyle
         }
       } else {
         for (let r = rg.r1; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) {
+          if (filteredOut(sheet, r)) continue;
           const base = sheet.styleIdOf(r, c);
           const p = typeof patch === 'function' ? patch(book.styles[base] || {}, r, c) : patch;
           const ns = book.derivedStyle(base, p);
@@ -172,6 +173,11 @@ export function setInput(app: App, sheet: Sheet, r: number, c: number, text: str
 // --------------------------------------------------------------------------------------------
 // Clearing
 
+/** True when the row is hidden by a filter (not merely hidden by hand): commands on a filtered list leave such rows alone. */
+export function filteredOut(sheet: Sheet, r: number): boolean {
+  return sheet.hiddenRows.has(r) && (!!sheet.filter || sheet.tables.some((t) => !!t.filter && r >= t.range.r1 && r <= t.range.r2));
+}
+
 export type ClearWhat = 'all' | 'contents' | 'formats' | 'comments' | 'links' | 'linksAndFormats';
 
 export function clearRange(app: App, sheet: Sheet, rg: Range, what: ClearWhat): void {
@@ -183,6 +189,7 @@ export function clearRange(app: App, sheet: Sheet, rg: Range, what: ClearWhat): 
     const r = keyRow(k), c = keyCol(k);
     const cell = sheet.cells.get(k);
     if (!cell) continue;
+    if (filteredOut(sheet, r)) continue;
     if (cell.sp != null && cell.f == null && (what === 'contents' || what === 'all')) continue; // spilled values belong to the anchor
     switch (what) {
       case 'all': sheet.set(r, c, undefined); break;

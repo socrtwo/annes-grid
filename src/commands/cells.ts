@@ -4,7 +4,7 @@ import type { App } from '../app';
 import { Sheet } from '../model/workbook';
 import { MAX_COLS, MAX_ROWS, colName, keyRow, keyCol, type Range } from '../model/address';
 import { shiftCells, insertCellsShift, renameSheet, invalidateSheetRefs, validSheetName } from '../model/structure';
-import { selRanges, activeRange, activeCell, isWholeCols, isWholeRows, clipToUsed } from './ops';
+import { selRanges, activeRange, activeCell, isWholeCols, isWholeRows, clipToUsed, filteredOut } from './ops';
 import { openDialog, toast, colorMenu, confirmDialog, promptDialog, choiceDialog } from '../ui/dialog';
 import { fontCss } from '../grid/render';
 import { formatValue } from '../model/numfmt';
@@ -44,7 +44,19 @@ function insertWhole(app: App, axis: 'row' | 'col'): void {
 function deleteWhole(app: App, axis: 'row' | 'col'): void {
   if (protectedSheet(app, axis === 'row' ? 'deleteRows' : 'deleteColumns')) return;
   const s = app.sheet;
-  app.book.transact(axis === 'row' ? 'Delete Rows' : 'Delete Columns', () => { for (const [a, b] of spans(app, axis)) shiftCells(s, axis, a, -(b - a + 1)); });
+  app.book.transact(axis === 'row' ? 'Delete Rows' : 'Delete Columns', () => {
+    for (const [a, b] of spans(app, axis)) {
+      const filtering = !!s.filter || s.tables.some((t) => !!t.filter);
+      if (axis === 'col' || !filtering) { shiftCells(s, axis, a, -(b - a + 1)); continue; }
+      // In a filtered list only the rows that are showing are deleted, from the bottom up.
+      let end = -1;
+      for (let r = Math.min(b, (s.usedRange()?.r2 ?? 0) + 1); r >= a - 1; r--) {
+        const keep = r < a || filteredOut(s, r);
+        if (!keep && end < 0) end = r;
+        if (keep && end >= 0) { shiftCells(s, 'row', r + 1, -(end - r)); end = -1; }
+      }
+    }
+  });
   const { r, c } = activeCell(app);
   app.grid.select(r, c);
 }

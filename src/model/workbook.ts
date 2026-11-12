@@ -166,7 +166,9 @@ export class Sheet {
       id: this.id, name: this.name, cells,
       colW: [...this.colW], rowH: [...this.rowH], hiddenRows: [...this.hiddenRows], hiddenCols: [...this.hiddenCols],
       rowLevel: [...this.rowLevel], colLevel: [...this.colLevel], rowStyle: [...this.rowStyle], colStyle: [...this.colStyle],
-      merges: this.merges, freeze: this.freeze, split: this.split, comments: [...this.comments], validations: this.validations, cf: this.cf,
+      merges: this.merges, freeze: this.freeze, split: this.split, comments: [...this.comments], validations: this.validations,
+      // The Reading Layout highlight is a view aid, not part of the document: it is not saved or put in undo snapshots.
+      cf: this.cf.some((r) => r.id === 'cf_readingLayout') ? this.cf.filter((r) => r.id !== 'cf_readingLayout') : this.cf,
       filter: this.filter, tables: this.tables, charts: this.charts, drawings: this.drawings, sparklines: this.sparklines, pivots: this.pivots,
       scenarios: this.scenarios, print: this.print, rowBreaks: this.rowBreaks, colBreaks: this.colBreaks, protection: this.protection,
       tabColor: this.tabColor, visibility: this.visibility, showGrid: this.showGrid, showHeadings: this.showHeadings, showFormulas: this.showFormulas,
@@ -473,8 +475,10 @@ export class Workbook {
       sh.loadJSON(snap);
       this.pending.structural = true;
     }
-    for (const [sh, m] of t.cells) {
-      if (!this.sheets.includes(sh)) continue;
+    for (const [recorded, m] of t.cells) {
+      // Undo and redo re-create sheets from snapshots, so the sheet is found by its id, not as the same object.
+      const sh = this.sheets.includes(recorded) ? recorded : this.sheetById(recorded.id);
+      if (!sh) continue;
       const inv = new Map<number, Cell | undefined>();
       for (const [k, v] of m) {
         const cur = sh.cells.get(k);
@@ -482,7 +486,8 @@ export class Workbook {
         if (v) sh.cells.set(k, { ...v }); else sh.cells.delete(k);
         this.noteChange(sh, k);
       }
-      inverse.cells.set(sh, inv);
+      // A whole-book or whole-sheet snapshot in the inverse already holds these cells as they are now.
+      if (!t.book && !t.sheets.has(sh.id)) inverse.cells.set(sh, inv);
     }
     if (t.selection) {
       const i = this.sheets.findIndex((s) => s.id === t.selection!.sheet);

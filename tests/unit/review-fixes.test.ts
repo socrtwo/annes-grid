@@ -7,7 +7,8 @@ import { parseCell } from '../../src/model/address';
 import { CellError, type Scalar } from '../../src/model/types';
 import { formatValue, formatGeneral } from '../../src/model/numfmt';
 import { parseDateTime } from '../../src/model/dates';
-import { shiftCells } from '../../src/model/structure';
+import { shiftCells, insertCellsShift } from '../../src/model/structure';
+import { Sheet } from '../../src/model/workbook';
 import { translateLotus } from '../../src/heritage/lotus';
 import { parseCreateTable } from '../../src/io/sqlite';
 import { exportOds, importOds } from '../../src/io/ods';
@@ -164,5 +165,79 @@ describe('importers and exporters', () => {
     const back = await importXlsx(await (await exportXlsx(b)).arrayBuffer());
     expect(back.sheet.get(0, 0)).toMatchObject({ link: '#Sheet1!B2', linkTip: 'tip' });
     expect(back.sheet.get(1, 0)).toMatchObject({ link: 'https://ex.com/a#frag#x', linkTip: 'more' });
+  });
+});
+
+describe('undo after a sheet has been re-created', () => {
+  it('still undoes and redoes cell edits on that sheet', () => {
+    const b = new Workbook();
+    b.transact('add', () => { b.recordBook(); b.sheets.push(new Sheet(b, 'Two')); });
+    b.transact('type', () => b.sheets[1].set(0, 0, { v: 'x' }));
+    b.undo(); b.undo();
+    expect(b.sheets.length).toBe(1);
+    b.redo(); b.redo();
+    expect(b.sheets[1].value(0, 0)).toBe('x');
+    b.undo();
+    expect(b.sheets[1].value(0, 0) ?? null).toBeNull();
+  });
+  it('redoes a step that wrote cells before and after a structural change', () => {
+    const b = new Workbook(); const s = b.sheet;
+    b.transact('mix', () => { s.set(0, 0, { v: 1 }); shiftCells(s, 'row', 0, 1); s.set(0, 0, { v: 2 }); });
+    expect([s.value(0, 0), s.value(1, 0)]).toEqual([2, 1]);
+    b.undo();
+    expect([s.value(0, 0) ?? null, s.value(1, 0) ?? null]).toEqual([null, null]);
+    b.redo();
+    expect([b.sheet.value(0, 0), b.sheet.value(1, 0)]).toEqual([2, 1]);
+  });
+});
+
+describe('references when rows, columns or cells are inserted and deleted', () => {
+  it('insert cells (shift down) widens a range that straddles the insertion', () => {
+    const { b, e, s } = book({ A1: 1, A2: 2, A3: 3, A4: 4, A5: 5, B1: '=SUM(A1:A5)', C1: '=A4' });
+    b.transact('i', () => insertCellsShift(s, { r1: 2, c1: 0, r2: 2, c2: 0 }, 'down'));
+    e.recalc();
+    expect(s.get(0, 1)?.f).toBe('SUM(A1:A6)');
+    expect(s.value(0, 1)).toBe(15);
+    expect(s.get(0, 2)?.f).toBe('A5');
+  });
+  it('delete cells (shift up) shrinks a straddling range and breaks a reference to the deleted cell', () => {
+    const { b, e, s } = book({ A1: 1, A2: 2, A3: 3, A4: 4, A5: 5, B1: '=SUM(A1:A5)', C1: '=A3', D1: '=A5' });
+    b.transact('d', () => insertCellsShift(s, { r1: 2, c1: 0, r2: 2, c2: 0 }, 'up'));
+    e.recalc();
+    expect(s.get(0, 1)?.f).toBe('SUM(A1:A4)');
+    expect(s.value(0, 1)).toBe(12);
+    expect(s.get(0, 2)?.f).toBe('#REF!');
+    expect(s.get(0, 3)?.f).toBe('A4');
+  });
+  it('a range typed backwards is adjusted when a row inside it is deleted', () => {
+    const { b, e, s } = book({ A1: 1, A2: 2, A3: 3, A4: 4, A5: 5, B1: '=SUM(A4:A2)' });
+    b.transact('d', () => shiftCells(s, 'row', 2, -1));
+    e.recalc();
+    expect(s.get(0, 1)?.f).toBe('SUM(A3:A2)');
+    expect(s.value(0, 1)).toBe(6);
+  });
+  it('a validation or conditional-format formula survives the deletion of its first row', () => {
+    const { b, s } = book({ A1: 1 });
+    s.validations.push({ ranges: [{ r1: 0, c1: 0, r2: 9, c2: 0 }], type: 'custom', formula1: 'A1>5' } as any);
+    s.cf.push({ id: 'r1', type: 'expression', formulas: ['$B1+A1>5'], ranges: [{ r1: 0, c1: 0, r2: 5, c2: 0 }], priority: 1 } as any);
+    b.transact('d', () => shiftCells(s, 'row', 0, -1));
+    expect(s.validations[0].formula1).toBe('A1>5');
+    expect(s.validations[0].ranges[0]).toMatchObject({ r1: 0, r2: 8 });
+    expect(s.cf[0].formulas).toEqual(['$B1+A1>5']);
+  });
+  it('reference text outside formulas follows inserted rows', () => {
+    const { b, s } = book({ B1: 1 });
+    s.scenarios.push({ name: 'x', cells: '$B$1,$B$2', values: [1, 2] });
+    s.print.titleRows = '$1:$1';
+    b.transact('i', () => shiftCells(s, 'row', 0, 2));
+    expect(s.scenarios[0].cells).toBe('$B$3,$B$4');
+    expect(s.print.titleRows).toBe('$3:$3');
+  });
+  it('filter criteria stay with their columns', () => {
+    const { b, s } = book({ A1: 'id', B1: 'k', C1: 'v' });
+    s.filter = { range: { r1: 0, c1: 0, r2: 3, c2: 2 }, columns: { 1: { values: ['a'] } as any }, sort: { col: 2, desc: false } };
+    b.transact('d', () => shiftCells(s, 'col', 0, -1));
+    expect(Object.keys(s.filter!.columns)).toEqual(['0']);
+    expect(s.filter!.sort).toEqual({ col: 1, desc: false });
   });
 });

@@ -6,7 +6,7 @@
 import { cellKey, keyRow, keyCol, MAX_COLS, MAX_ROWS, parseRange, rangeName, splitSheetRef, quoteSheet, type Range } from './address';
 import type { Sheet, Workbook } from './workbook';
 import type { Cell } from './types';
-import { mapRefs, type RefToken } from '../calc/parser';
+import { mapRefs, shiftFormula, type RefToken } from '../calc/parser';
 
 export type Axis = 'row' | 'col';
 
@@ -43,10 +43,13 @@ export function adjustFormula(f: string, home: Sheet, target: Sheet, axis: Axis,
     const refSheet = ref.sheet ? home.book.sheetByName(ref.sheet) : home;
     if (refSheet !== target || ref.sheet2) return null;
     if ((axis === 'row' && ref.kind === 'cols') || (axis === 'col' && ref.kind === 'rows')) return null;
-    const rg = adjustRange({ r1: ref.r1, c1: ref.c1, r2: ref.r2, c2: ref.c2 }, axis, at, n);
+    // A range may be written backwards (A4:A2); it is adjusted in order and written back the way it was typed.
+    const revR = ref.r1 > ref.r2, revC = ref.c1 > ref.c2;
+    const rg = adjustRange({ r1: Math.min(ref.r1, ref.r2), c1: Math.min(ref.c1, ref.c2), r2: Math.max(ref.r1, ref.r2), c2: Math.max(ref.c1, ref.c2) }, axis, at, n);
     if (!rg) return { ...ref, invalid: true };
-    if (rg.r1 === ref.r1 && rg.r2 === ref.r2 && rg.c1 === ref.c1 && rg.c2 === ref.c2) return null;
-    return { ...ref, ...rg } as RefToken;
+    const out = { r1: revR ? rg.r2 : rg.r1, r2: revR ? rg.r1 : rg.r2, c1: revC ? rg.c2 : rg.c1, c2: revC ? rg.c1 : rg.c2 };
+    if (out.r1 === ref.r1 && out.r2 === ref.r2 && out.c1 === ref.c1 && out.c2 === ref.c2) return null;
+    return { ...ref, ...out } as RefToken;
   });
 }
 
@@ -102,11 +105,30 @@ export function shiftCells(sheet: Sheet, axis: Axis, at: number, n: number): voi
       const nf = adjustFormula(cell.f, sh, sheet, axis, at, n);
       if (nf !== cell.f) sh.cells.set(k, { ...cell, f: nf });
     }
-    for (const cf of sh.cf) cf.formulas = cf.formulas?.map((f) => adjustFormula(f, sh, sheet, axis, at, n));
+    // A rule's formula is written for the first cell of its range. When that cell is deleted but the range lives on, the
+    // formula is first restated for the cell that becomes the new first cell, so it does not turn into #REF!.
+    const rule = (f: string, ranges: Range[]): string => {
+      const a = ranges[0];
+      if (sh === sheet && n < 0 && a) {
+        const lo = axis === 'row' ? a.r1 : a.c1, hi = axis === 'row' ? a.r2 : a.c2, end = at - n - 1;
+        if (lo >= at && lo <= end && hi > end) f = axis === 'row' ? shiftFormula(f, end + 1 - lo, 0) : shiftFormula(f, 0, end + 1 - lo);
+      }
+      return adjustFormula(f, sh, sheet, axis, at, n);
+    };
+    for (const cf of sh.cf) cf.formulas = cf.formulas?.map((f) => rule(f, cf.ranges));
     for (const dv of sh.validations) {
-      if (dv.formula1) dv.formula1 = adjustFormula(dv.formula1, sh, sheet, axis, at, n);
-      if (dv.formula2) dv.formula2 = adjustFormula(dv.formula2, sh, sheet, axis, at, n);
+      if (dv.formula1) dv.formula1 = rule(dv.formula1, dv.ranges);
+      if (dv.formula2) dv.formula2 = rule(dv.formula2, dv.ranges);
     }
+    // Reference text kept outside formulas follows the cells too.
+    const refText = (t: string) => adjustRefText(t, sh, sheet, axis, at, n);
+    const refList = (t: string) => t.split(',').map((x) => { const lead = /^\s*/.exec(x)![0]; return lead + refText(x.slice(lead.length)); }).join(',');
+    for (const sc of sh.scenarios) if (sc.cells) sc.cells = refList(sc.cells);
+    for (const er of sh.editRanges as { ref?: string }[]) if (typeof er.ref === 'string') er.ref = refList(er.ref);
+    for (const d of sh.drawings) if (d.control) { if (d.control.link) d.control.link = refText(d.control.link); if (d.control.input) d.control.input = refText(d.control.input); }
+    for (const ch of sh.charts) if (ch.sourceRange) ch.sourceRange = refText(ch.sourceRange);
+    if (sh.print.titleRows) sh.print.titleRows = refText(sh.print.titleRows);
+    if (sh.print.titleCols) sh.print.titleCols = refText(sh.print.titleCols);
     for (const ch of sh.charts) {
       for (const s of ch.series) {
         s.values = adjustRefText(s.values, sh, sheet, axis, at, n);
@@ -181,8 +203,8 @@ export function shiftCells(sheet: Sheet, axis: Axis, at: number, n: number): voi
   sheet.cf = sheet.cf.filter((x) => x.ranges.length);
   for (const dv of sheet.validations) dv.ranges = dv.ranges.map(adj).filter((x): x is Range => !!x);
   sheet.validations = sheet.validations.filter((x) => x.ranges.length);
-  if (sheet.filter) { const r = adj(sheet.filter.range); if (r) sheet.filter.range = r; else sheet.filter = null; }
-  sheet.tables = sheet.tables.filter((t) => { const r = adj(t.range); if (!r) return false; if (axis === 'col') adjustTableColumns(t, at, n); t.range = r; return true; });
+  if (sheet.filter) { const r = adj(sheet.filter.range); if (r) { if (axis === 'col') remapFilterColumns(sheet.filter, sheet.filter.range, r, at, n); sheet.filter.range = r; } else sheet.filter = null; }
+  sheet.tables = sheet.tables.filter((t) => { const r = adj(t.range); if (!r) return false; if (axis === 'col') { adjustTableColumns(t, at, n); if (t.filter) remapFilterColumns(t.filter, t.range, r, at, n); } t.range = r; return true; });
   const moveAnchor = (o: { at: { r: number; c: number } }) => {
     if (axis === 'row') { if (o.at.r >= at) o.at.r = Math.max(at, o.at.r + n); }
     else if (o.at.c >= at) o.at.c = Math.max(at, o.at.c + n);
@@ -200,6 +222,19 @@ export function shiftCells(sheet: Sheet, axis: Axis, at: number, n: number): voi
   if (axis === 'col' && sheet.freeze.cols > at) sheet.freeze.cols = Math.max(at, sheet.freeze.cols + n);
   if (sheet.print.area) sheet.print.area = adjustRefText(sheet.print.area, sheet, sheet, axis, at, n);
   book.pending.structural = true;
+}
+
+/** Filter criteria and the sort column are stored by column offset within the list: they follow their columns. */
+function remapFilterColumns(f: { columns: Record<number, unknown>; sort?: { col: number; desc: boolean } }, old: Range, now: Range, at: number, n: number): void {
+  const move = (off: number): number | null => {
+    const c = old.c1 + off;
+    const nc = c < at ? c : n < 0 && c < at - n ? null : c + n;
+    return nc == null || nc < now.c1 || nc > now.c2 ? null : nc - now.c1;
+  };
+  const cols: Record<number, unknown> = {};
+  for (const [k, v] of Object.entries(f.columns)) { const o = move(Number(k)); if (o != null) cols[o] = v; }
+  f.columns = cols;
+  if (f.sort) { const o = move(f.sort.col); if (o == null) delete f.sort; else f.sort.col = o; }
 }
 
 function adjustTableColumns(t: { range: Range; columns: { name: string }[] }, at: number, n: number): void {
@@ -226,6 +261,7 @@ export function insertCellsShift(sheet: Sheet, rg: Range, dir: 'down' | 'right' 
   const book = sheet.book;
   book.recordSheet(sheet);
   const used = sheet.usedRange() || rg;
+  adjustStraddling(sheet, rg, dir);
   if (dir === 'down' || dir === 'up') {
     const h = rg.r2 - rg.r1 + 1;
     const block: Range = { r1: rg.r1, c1: rg.c1, r2: Math.max(used.r2, rg.r2), c2: rg.c2 };
@@ -236,6 +272,50 @@ export function insertCellsShift(sheet: Sheet, rg: Range, dir: 'down' | 'right' 
     const block: Range = { r1: rg.r1, c1: rg.c1, r2: rg.r2, c2: Math.max(used.c2, rg.c2) };
     if (dir === 'right') moveBlock(sheet, block, 0, w);
     else { clearBlock(sheet, rg); moveBlock(sheet, { ...block, c1: rg.c2 + 1 }, 0, -w); }
+  }
+}
+
+/**
+ * Before cells are shifted within a band of columns (or rows), ranges that only partly lie in the part that moves are
+ * resized, and references to cells that are being deleted become #REF!. References wholly inside the part that moves
+ * are left for moveBlock, which carries them along.
+ */
+function adjustStraddling(sheet: Sheet, rg: Range, dir: 'down' | 'right' | 'up' | 'left'): void {
+  const book = sheet.book;
+  const rows = dir === 'down' || dir === 'up';
+  const size = rows ? rg.r2 - rg.r1 + 1 : rg.c2 - rg.c1 + 1;
+  const at = rows ? rg.r1 : rg.c1, end = at + size - 1;
+  const max = rows ? MAX_ROWS : MAX_COLS;
+  const fix = (f: string, home: Sheet) => mapRefs(f, (ref) => {
+    const refSheet = ref.sheet ? book.sheetByName(ref.sheet) : home;
+    if (refSheet !== sheet || ref.sheet2 || ref.kind === 'cols' || ref.kind === 'rows') return null;
+    const bandLo = rows ? Math.min(ref.c1, ref.c2) : Math.min(ref.r1, ref.r2), bandHi = rows ? Math.max(ref.c1, ref.c2) : Math.max(ref.r1, ref.r2);
+    if (bandLo < (rows ? rg.c1 : rg.r1) || bandHi > (rows ? rg.c2 : rg.r2)) return null;
+    const a = rows ? ref.r1 : ref.c1, b = rows ? ref.r2 : ref.c2;
+    const rev = a > b;
+    let lo = Math.min(a, b), hi = Math.max(a, b);
+    if (dir === 'down' || dir === 'right') {
+      if (!(lo < at && hi >= at)) return null;
+      hi = Math.min(max - 1, hi + size);
+    } else {
+      if (hi < at || lo > end) return null;
+      if (lo >= at && hi <= end) return { ...ref, invalid: true };
+      if (lo < at) hi = hi > end ? hi - size : at - 1;
+      else { lo = at; hi -= size; }
+    }
+    const p = rev ? [hi, lo] : [lo, hi];
+    return (rows ? { ...ref, r1: p[0], r2: p[1] } : { ...ref, c1: p[0], c2: p[1] }) as RefToken;
+  });
+  book.recordBook();
+  for (const sh of book.sheets) for (const [k, cell] of sh.cells) {
+    if (cell.f == null) continue;
+    const nf = fix(cell.f, sh);
+    if (nf !== cell.f) sh.cells.set(k, { ...cell, f: nf });
+  }
+  for (const nm of book.names) {
+    const home = (nm.sheet && book.sheetByName(nm.sheet)) || book.sheets[0];
+    const lead = nm.ref.startsWith('=') ? '=' : '';
+    nm.ref = lead + fix(nm.ref.slice(lead.length), home);
   }
 }
 

@@ -640,10 +640,12 @@ def([
         for (let line = lines[0]; line <= lines[1]; line++) {
           const base = cols ? s.value(rg.r1, line) : s.value(line, rg.c1);
           let v = typeof base === 'number' ? base : start;
+          const first = v;
           for (let i = 1; i < len; i++) {
             if (r.type === 'linear') v += step;
             else if (r.type === 'growth') v *= step;
-            else v = dateStep(v, step, r.unit);
+            // Months and years are counted from the first date each time, so a shortened month end does not carry on.
+            else v = r.unit === 'month' || r.unit === 'year' ? dateStep(first, step * i, r.unit) : dateStep(v, step, r.unit);
             if (stop != null && (step >= 0 ? v > stop : v < stop)) break;
             const rr = cols ? rg.r1 + i : line, cc = cols ? line : rg.c1 + i;
             const cur = s.get(rr, cc);
@@ -708,9 +710,12 @@ function dateStep(v: number, step: number, unit: string): number {
   const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000);
   if (unit === 'day') return v + step;
   if (unit === 'weekday') { let n = v; let k = Math.abs(step); while (k > 0) { n += Math.sign(step) || 1; const dw = new Date(Date.UTC(1899, 11, 30) + n * 86400000).getUTCDay(); if (dw !== 0 && dw !== 6) k--; } return n; }
-  if (unit === 'month') d.setUTCMonth(d.getUTCMonth() + step);
-  if (unit === 'year') d.setUTCFullYear(d.getUTCFullYear() + step);
-  return Math.round((d.getTime() - Date.UTC(1899, 11, 30)) / 86400000);
+  // Months and years keep the day of the month, shortened to the month's last day where it has fewer (31 Jan + 1 month
+  // is the end of February, not early March).
+  const months = d.getUTCFullYear() * 12 + d.getUTCMonth() + (unit === 'year' ? step * 12 : step);
+  const y = Math.floor(months / 12), m = months - y * 12;
+  const day = Math.min(d.getUTCDate(), new Date(Date.UTC(y, m + 1, 0)).getUTCDate());
+  return Math.round((Date.UTC(y, m, day) - Date.UTC(1899, 11, 30)) / 86400000) + (v - Math.floor(v));
 }
 
 const clearCmd = (id: string, label: string, icon: string, what: ClearWhat, keys?: string[]) => ({

@@ -8,7 +8,7 @@ import type { Cell, CellStyle, Scalar, Matrix } from '../model/types';
 import { CellError, errorFromCode } from '../model/types';
 import { cellKey, keyRow, keyCol, MAX_COLS, MAX_ROWS, colName, cellName, type Range } from '../model/address';
 import { parseNumberInput, isTextFormat, isDateFormat, formatValue } from '../model/numfmt';
-import { parseDateTime } from '../model/dates';
+import { parseDateTime, serialToParts, partsToSerial, daysInMonth } from '../model/dates';
 import { shiftFormula } from '../calc/parser';
 import { BUILTIN_LISTS } from '../prefs';
 import { getFn } from '../calc/functions/registry';
@@ -233,6 +233,10 @@ export function seriesFrom(app: App, vals: { cell: Cell | undefined; r: number; 
   }
   if (allNums) {
     if (n === 1) return (i) => ({ cell: copy ? cells[0] : cells[0], srcIndex: 0 });
+    // Dates a whole number of months apart (the 1st of each month, month ends, the same day each year) continue by
+    // the calendar: a straight line through them drifts, because months differ in length.
+    const monthly = monthSeries(app, cells, nums as number[]);
+    if (monthly) return (i) => { const src = ((i % n) + n) % n; return { cell: { ...(cells[src] || {}), v: monthly(n + i) }, srcIndex: src }; };
     // linear trend (best fit) for numeric series
     const xs = nums.map((_, i) => i), ys = nums as number[];
     const mx = (n - 1) / 2, my = ys.reduce((a, b) => a + b, 0) / n;
@@ -248,6 +252,26 @@ export function seriesFrom(app: App, vals: { cell: Cell | undefined; r: number; 
   return (i) => {
     const src = ((i % n) + n) % n;
     return { cell: { ...(cells[src] || {}), v: info.next(n + i) }, srcIndex: src };
+  };
+}
+
+/** For dates a constant number of months apart, on the same day of the month or all on month ends: the k-th date of the series. */
+function monthSeries(app: App, cells: (Cell | undefined)[], nums: number[]): ((k: number) => number) | null {
+  const d1904 = app.book.calc.date1904;
+  if (nums.length < 2 || !cells.every((c) => isDateFormat(app.book.styles[c?.s ?? 0]?.numFmt))) return null;
+  if (nums.some((v) => v < 61 || v > 2958465)) return null;
+  const parts = nums.map((v) => serialToParts(Math.floor(v), d1904));
+  const idx = parts.map((p) => p.y * 12 + (p.m - 1));
+  const step = idx[1] - idx[0];
+  if (step === 0 || idx.some((x, i) => i > 0 && x - idx[i - 1] !== step)) return null;
+  const ends = parts.every((p) => p.d === daysInMonth(p.y, p.m));
+  if (!ends && parts.some((p) => p.d !== parts[0].d)) return null;
+  const frac = nums[0] - Math.floor(nums[0]);
+  return (k) => {
+    const m = idx[0] + step * k, y = Math.floor(m / 12), mo = m - y * 12 + 1;
+    if (y < 1900 || y > 9999) return nums[nums.length - 1];
+    const dim = daysInMonth(y, mo);
+    return partsToSerial(y, mo, ends ? dim : Math.min(parts[0].d, dim), d1904) + frac;
   };
 }
 

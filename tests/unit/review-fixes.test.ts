@@ -10,6 +10,7 @@ import { parseDateTime, partsToSerial, serialToParts } from '../../src/model/dat
 import { shiftCells, insertCellsShift } from '../../src/model/structure';
 import { Sheet } from '../../src/model/workbook';
 import { translateLotus } from '../../src/heritage/lotus';
+import { seriesFrom } from '../../src/commands/ops';
 import { parseCreateTable } from '../../src/io/sqlite';
 import { exportOds, importOds } from '../../src/io/ods';
 import { exportXlsx, xlsxSheetNames } from '../../src/io/xlsx-export';
@@ -401,5 +402,25 @@ describe('bond coupon dates', () => {
     expect(val('COUPDAYBS(DATE(2020,3,30),DATE(2030,3,31),4,0)')).toBe(90);
     expect(val('COUPPCD(DATE(2011,1,25),DATE(2011,11,15),2,1)')).toBe(40497);
     expect(val('COUPNCD(DATE(2011,1,25),DATE(2011,11,15),2,1)')).toBe(40678);
+  });
+});
+
+describe('filling a series of dates', () => {
+  function fill(dates: [number, number, number][], count: number) {
+    const b = new Workbook();
+    const st = b.styleId({ numFmt: 'm/d/yyyy' });
+    const vals = dates.map(([y, m, d], i) => ({ cell: { v: partsToSerial(y, m, d), s: st }, r: i, c: 0 }));
+    const next = seriesFrom({ book: b, prefs: { customLists: [] } } as any, vals, false);
+    return Array.from({ length: count }, (_, i) => { const p = serialToParts(next(i).cell!.v as number); return `${p.m}/${p.d}/${p.y}`; });
+  }
+  it('continues month by month, to month ends, and year by year', () => {
+    expect(fill([[2024, 1, 1], [2024, 2, 1]], 3)).toEqual(['3/1/2024', '4/1/2024', '5/1/2024']);
+    expect(fill([[2024, 1, 31], [2024, 2, 29]], 3)).toEqual(['3/31/2024', '4/30/2024', '5/31/2024']);
+    expect(fill([[2023, 1, 1], [2024, 1, 1]], 3)).toEqual(['1/1/2025', '1/1/2026', '1/1/2027']);
+    expect(fill([[2024, 1, 15], [2024, 4, 15]], 2)).toEqual(['7/15/2024', '10/15/2024']);
+  });
+  it('still continues days and weeks in a straight line', () => {
+    expect(fill([[2024, 1, 1], [2024, 1, 8]], 2)).toEqual(['1/15/2024', '1/22/2024']);
+    expect(fill([[2024, 1, 30], [2024, 1, 31]], 2)).toEqual(['2/1/2024', '2/2/2024']);
   });
 });

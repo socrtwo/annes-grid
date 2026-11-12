@@ -228,7 +228,7 @@ export function convertUnit(v: number, from: string, to: string): number | null 
 }
 
 export function toBase(n: number, base: number): string { return Math.trunc(n).toString(base).toUpperCase(); }
-export function fromBase(s: string, base: number): number | null { const t = s.trim().replace(/^0[xXbBoO]/, ''); if (!t) return null; const n = parseInt(t, base); if (isNaN(n) || n < 0) return null; return n.toString(base).toUpperCase() === t.toUpperCase().replace(/^0+(?=.)/, '') ? n : null; }
+export function fromBase(s: string, base: number): number | null { const t = s.trim().replace(base === 16 ? /^0[xX]/ : base === 2 ? /^0[bB]/ : base === 8 ? /^0[oO]/ : /^(?!)/, ''); if (!t) return null; const n = parseInt(t, base); if (isNaN(n) || n < 0) return null; return n.toString(base).toUpperCase() === t.toUpperCase().replace(/^0+(?=.)/, '') ? n : null; }
 
 function dateParts(app: App, v: number) { return serialToParts(v, app.book.calc.date1904); }
 
@@ -291,7 +291,7 @@ defTools([
     run: async (app, arg?: { pattern: string }) => {
       const o = await argOrAsk(arg, async () => { const r = await openDialog({ title: 'Dates to Text', fields: [{ key: 'pattern', label: 'Pattern', type: 'combo', value: 'yyyy-mm-dd', options: ['yyyy-mm-dd', 'd mmmm yyyy', 'mmmm d, yyyy', 'mm/dd/yyyy', 'dd/mm/yyyy', 'dd.mm.yyyy', 'ddd d mmm yyyy', 'yyyymmdd'] }] }); return r ? { pattern: String(r.pattern) } : null; });
       if (!o) return;
-      const fmt = (v: number) => { const p = dateParts(app, v); const two = (n: number) => String(n).padStart(2, '0'); return o.pattern.replace(/yyyy/g, String(p.y)).replace(/yy/g, String(p.y).slice(-2)).replace(/mmmm/g, MONTHS[p.m - 1]).replace(/mmm/g, MONTHS[p.m - 1].slice(0, 3)).replace(/mm/g, two(p.m)).replace(/dddd/g, DAYS[p.dow]).replace(/ddd/g, DAYS[p.dow].slice(0, 3)).replace(/dd/g, two(p.d)).replace(/(^|[^d])d(?!d)/g, `$1${p.d}`).replace(/(^|[^m])m(?!m)/g, `$1${p.m}`); };
+      const fmt = (v: number) => { const p = dateParts(app, v); const two = (n: number) => String(n).padStart(2, '0'); const map: Record<string, string> = { yyyy: String(p.y), yy: String(p.y).slice(-2), mmmm: MONTHS[p.m - 1], mmm: MONTHS[p.m - 1].slice(0, 3), mm: two(p.m), m: String(p.m), dddd: DAYS[p.dow], ddd: DAYS[p.dow].slice(0, 3), dd: two(p.d), d: String(p.d) }; /* one pass, so the letters of an inserted month or day name are not read as codes */ return o.pattern.replace(/yyyy|yy|mmmm|mmm|mm|m|dddd|ddd|dd|d/g, (tok) => map[tok]); };
       changeCells(app, 'Dates to Text', (cell, r, c) => (typeof cell.v === 'number' && isDateFormat(app.sheet.styleOf(r, c).numFmt) ? { ...cell, v: fmt(cell.v), s: app.book.derivedStyle(cell.s ?? 0, { numFmt: '@' }) } : undefined));
     },
   },

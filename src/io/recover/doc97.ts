@@ -46,14 +46,17 @@ export function readCfb(b: Uint8Array): CfbStreams | null {
   const maxSid = Math.ceil(b.length / secSize);
 
   // FAT sector list from the header DIFAT and any DIFAT chain.
+  // Each FAT sector is listed once: a damaged DIFAT chain that repeats them must not multiply the table.
   const fatSids: number[] = [];
-  for (let k = 0; k < 109; k++) { const s = u32(0x4c + k * 4); if (s < maxSid) fatSids.push(s); }
+  const seenFat = new Set<number>();
+  const addFat = (s: number) => { if (s < maxSid && !seenFat.has(s)) { seenFat.add(s); fatSids.push(s); } };
+  for (let k = 0; k < 109; k++) addFat(u32(0x4c + k * 4));
   const seenDifat = new Set<number>();
   for (let d = difatStart; d < maxSid && !seenDifat.has(d); ) {
     seenDifat.add(d);
     const off = secOff(d);
     const per = secSize / 4 - 1;
-    for (let k = 0; k < per; k++) { const s = u32(off + k * 4); if (s < maxSid) fatSids.push(s); }
+    for (let k = 0; k < per; k++) addFat(u32(off + k * 4));
     d = u32(off + per * 4);
   }
   const perSec = secSize / 4;

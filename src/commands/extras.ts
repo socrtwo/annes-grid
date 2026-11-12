@@ -308,7 +308,7 @@ export function agingBucket(days: number, edges = [0, 30, 60, 90]): string { if 
 /** Benford's law: expected and observed first-digit frequencies. */
 export function benford(values: number[]): { digit: number; expected: number; observed: number; count: number }[] {
   const counts = new Array(10).fill(0); let total = 0;
-  for (const v of values) { const d = String(Math.abs(v)).replace(/[^1-9]/, '').replace(/^0+/, '')[0]; if (d && d !== '0') { counts[+d]++; total++; } }
+  for (const v of values) { const d = Number.isFinite(v) && v !== 0 ? Math.abs(v).toExponential()[0] : ''; if (d && d !== '0') { counts[+d]++; total++; } }
   const out: { digit: number; expected: number; observed: number; count: number }[] = [];
   for (let d = 1; d <= 9; d++) out.push({ digit: d, expected: Math.log10(1 + 1 / d), observed: total ? counts[d] / total : 0, count: counts[d] });
   return out;

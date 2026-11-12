@@ -306,7 +306,9 @@ function pasteInternal(app: App, cd: ClipData, o: PasteOpts): void {
         }
         const takeContent = ['all', 'formulas', 'values', 'allExceptBorders', 'formulasAndNumFmt', 'valuesAndNumFmt', 'allMergingCF', 'noBorders'].includes(what);
         const takeFormat = ['all', 'formats', 'allExceptBorders', 'allMergingCF', 'noBorders'].includes(what);
-        if (takeContent) {
+        // With an operation, a source cell that is not a plain number leaves the destination's content as it is.
+        const opSkip = !!o.op && o.op !== 'none' && !(src && typeof src.v === 'number' && src.f == null);
+        if (takeContent && !opSkip) {
           delete next.v; delete next.f; delete next.rich; delete next.sp; delete next.arr; delete next.link;
           if (src) {
             if (src.f != null && what !== 'values' && what !== 'valuesAndNumFmt') {
@@ -776,10 +778,15 @@ def([
 
 interface FindOpts { what: string; replace?: string; within: 'sheet' | 'workbook'; by: 'rows' | 'cols'; lookIn: 'formulas' | 'values' | 'comments'; matchCase: boolean; whole: boolean; regex: boolean }
 
+/** The search text as a regular expression source: wildcards * and ?, with ~* and ~? for the literal characters. */
+function findPattern(o: FindOpts): string {
+  return o.regex ? o.what : o.what.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/~\*/g, '\u0001').replace(/~\?/g, '\u0002').replace(/\*/g, '.*').replace(/\?/g, '.').replace(/\u0001/g, '\\*').replace(/\u0002/g, '\\?');
+}
+
 function* findIter(app: App, o: FindOpts): Generator<{ sheet: Sheet; r: number; c: number }> {
   const sheets = o.within === 'workbook' ? app.book.sheets : [app.sheet];
   const flags = o.matchCase ? '' : 'i';
-  const pat = o.regex ? o.what : o.what.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/~\*/g, '\u0001').replace(/~\?/g, '\u0002').replace(/\*/g, '.*').replace(/\?/g, '.').replace(/\u0001/g, '\\*').replace(/\u0002/g, '\\?');
+  const pat = findPattern(o);
   const re = new RegExp(o.whole ? `^(?:${pat})$` : pat, flags);
   for (const sh of sheets) {
     const keys = [...sh.cells.keys()].sort((a, b) => (o.by === 'rows' ? a - b : keyCol(a) - keyCol(b) || keyRow(a) - keyRow(b)));
@@ -869,10 +876,12 @@ async function findDialog(app: App, replace: boolean): Promise<void> {
 function replaceIn(app: App, sheet: Sheet, r: number, c: number, o: FindOpts): void {
   const cell = sheet.get(r, c);
   if (!cell) return;
-  const pat = o.regex ? o.what : o.what.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  const re = new RegExp(o.whole ? `^(?:${pat})$` : pat, o.matchCase ? 'g' : 'gi');
-  const src = cell.f != null && o.lookIn === 'formulas' ? '=' + cell.f : cell.v == null ? '' : String(cell.v);
-  const out = src.replace(re, o.replace || '');
+  // A formula found by its result is left alone: replacing in the result would turn it into a constant.
+  if (cell.f != null && o.lookIn !== 'formulas') return;
+  const re = new RegExp(o.whole ? `^(?:${findPattern(o)})$` : findPattern(o), o.matchCase ? 'g' : 'gi');
+  const src = cell.f != null ? '=' + cell.f : cell.v == null ? '' : String(cell.v);
+  // Outside regular-expression mode the replacement is literal text ($& and $1 mean nothing special).
+  const out = o.regex ? src.replace(re, o.replace || '') : src.replace(re, () => o.replace || '');
   if (out === src) return;
   app.book.transact('Replace', () => setInput(app, sheet, r, c, out));
 }

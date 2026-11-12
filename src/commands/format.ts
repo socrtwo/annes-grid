@@ -2,7 +2,7 @@
 import { def } from './registry';
 import type { App } from '../app';
 import type { CellStyle, Border, NamedCellStyle } from '../model/types';
-import { applyStyle, toggleStyle, activeStyle, activeCell, selRanges } from './ops';
+import { applyStyle, toggleStyle, activeStyle, activeCell, selRanges, clipToUsed } from './ops';
 import { FORMAT_CATEGORIES, formatDecimals, withDecimals, formatValue } from '../model/numfmt';
 import { colorMenu, openDialog, toast, confirmDialog, THEME_COLORS, STANDARD_COLORS } from '../ui/dialog';
 import { FONT_LIST } from '../fonts';
@@ -155,7 +155,8 @@ def([
 async function merge(app: App, mode: 'center' | 'across' | 'merge' | 'unmerge'): Promise<void> {
   const s = app.sheet;
   const book = app.book;
-  const rgs = selRanges(app);
+  // Merge Across on whole columns would make a million one-row merges; rows past the data have nothing to merge.
+  const rgs = mode === 'across' ? selRanges(app).map((rg) => ({ ...rg, r2: clipToUsed(s, rg).r2 })) : selRanges(app);
   const dataLoss = mode !== 'unmerge' && rgs.some((rg) => {
     let n = 0;
     s.forEachIn(rg, (_r, _c, cell) => { if (cell.v != null || cell.f != null) n++; });
@@ -170,6 +171,14 @@ async function merge(app: App, mode: 'center' | 'across' | 'merge' | 'unmerge'):
       const rows: Range[] = mode === 'across' ? Array.from({ length: rg.r2 - rg.r1 + 1 }, (_, i) => ({ r1: rg.r1 + i, c1: rg.c1, r2: rg.r1 + i, c2: rg.c2 })) : [rg];
       for (const m of rows) {
         if (m.r1 === m.r2 && m.c1 === m.c2) continue;
+        // The merged cell shows its upper-left cell: when that is empty, the first value in the area moves there instead of being lost.
+        const anchor = s.get(m.r1, m.c1);
+        if (!anchor || (anchor.v == null && anchor.f == null)) {
+          let first: { r: number; c: number } | null = null;
+          s.forEachIn(m, (r, c, cell) => { if ((cell.v != null || cell.f != null) && (!first || r < first.r || (r === first.r && c < first.c))) first = { r, c }; });
+          const f = first as { r: number; c: number } | null;
+          if (f) { const from = s.get(f.r, f.c)!; const { s: _style, ...content } = from; s.set(m.r1, m.c1, { ...content, ...(anchor?.s ? { s: anchor.s } : {}) }); }
+        }
         for (let r = m.r1; r <= m.r2; r++) for (let c = m.c1; c <= m.c2; c++) if (r !== m.r1 || c !== m.c1) { const cur = s.get(r, c); if (cur && (cur.v != null || cur.f != null)) s.set(r, c, cur.s ? { s: cur.s } : undefined); }
         s.merges.push(m);
       }

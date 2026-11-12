@@ -555,3 +555,44 @@ describe('Extras tab', () => {
     expect(selCells(app).length).toBeGreaterThan(0);
   });
 });
+
+describe('review fixes: undo and copies', () => {
+  it('undoes and redoes a tool that inserts rows and then writes cells', async () => {
+    const { app, book, put, get, select } = fakeApp();
+    put('A1', 'a'); put('B1', 1); put('A2', 'b'); put('B2', 2); put('A3', 'c'); put('B3', 3);
+    select('A1:B3');
+    await app.exec('util.duplicateRows', { times: 2 });
+    const after = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6'].map((a) => get(a));
+    expect(after).toEqual(['a', 'a', 'b', 'b', 'c', 'c']);
+    book.undo();
+    expect(['A1', 'A2', 'A3', 'A4'].map((a) => get(a))).toEqual(['a', 'b', 'c', null]);
+    expect(['B1', 'B2', 'B3'].map((a) => get(a))).toEqual([1, 2, 3]);
+    book.redo();
+    expect(['A1', 'A2', 'A3', 'A4', 'A5', 'A6'].map((a) => get(a))).toEqual(after);
+  });
+  it('gives each copied sheet its own id', async () => {
+    const { app, book, put } = fakeApp();
+    put('A1', 'orig');
+    await app.exec('util.copySheetTimes', { count: 2 });
+    expect(book.sheets.length).toBe(3);
+    expect(new Set(book.sheets.map((s) => s.id)).size).toBe(3);
+    expect(book.sheets[1].value(0, 0)).toBe('orig');
+  });
+  it('writes month and weekday names without reading their letters as codes', async () => {
+    const { app, book, put, get, select } = fakeApp();
+    put('A1', partsToSerial(2024, 9, 4)); put('A2', partsToSerial(2024, 12, 25));
+    book.transact('f', () => { for (const r of [0, 1]) book.sheet.patch(r, 0, { s: book.derivedStyle(0, { numFmt: 'yyyy-mm-dd' }) }); });
+    select('A1:A2');
+    await app.exec('util.datesToText', { pattern: 'dddd d mmmm yyyy' });
+    expect(get('A1')).toBe('Wednesday 4 September 2024');
+    expect(get('A2')).toBe('Wednesday 25 December 2024');
+  });
+  it('reads zero-padded hexadecimal and counts first digits of fractions', () => {
+    expect(fromBase('0B', 16)).toBe(11);
+    expect(fromBase('0BAD', 16)).toBe(2989);
+    expect(fromBase('0x1F', 16)).toBe(31);
+    expect(fromBase('0b101', 2)).toBe(5);
+    const b = benford([0.25, 0.31, 0.5, 20.5, 100, 3]);
+    expect(b.map((x) => x.count)).toEqual([1, 2, 2, 0, 1, 0, 0, 0, 0]);
+  });
+});

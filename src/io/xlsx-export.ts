@@ -659,11 +659,14 @@ function writeSheet(ctx: ExportCtx, sheet: Sheet, index: number, path: string, a
     const cell = sheet.cells.get(k);
     if (!cell || !cell.link) continue;
     const ref = cellName(keyRow(k), keyCol(k));
-    if (cell.link.startsWith('#')) links.push(`<hyperlink ref="${ref}" location="${esc(cell.link.slice(1))}" display="${esc(cell.link.slice(1))}"/>`);
+    const tip = cell.linkTip ? ` tooltip="${esc(cell.linkTip)}"` : '';
+    if (cell.link.startsWith('#')) links.push(`<hyperlink ref="${ref}" location="${esc(cell.link.slice(1))}" display="${esc(cell.link.slice(1))}"${tip}/>`);
     else {
-      const [url, loc] = cell.link.split('#');
+      // Only the first # separates the address from the place in the document.
+      const hash = cell.link.indexOf('#');
+      const url = hash < 0 ? cell.link : cell.link.slice(0, hash), loc = hash < 0 ? '' : cell.link.slice(hash + 1);
       const id = rels.add(REL + 'hyperlink', url, true);
-      links.push(`<hyperlink ref="${ref}" r:id="${id}"${loc ? ` location="${esc(loc)}"` : ''}/>`);
+      links.push(`<hyperlink ref="${ref}" r:id="${id}"${loc ? ` location="${esc(loc)}"` : ''}${tip}/>`);
     }
   }
   if (links.length) x.push(`<hyperlinks>${links.join('')}</hyperlinks>`);
@@ -841,7 +844,7 @@ function tableColumnNames(t: TableDef): string[] {
 }
 
 function tableXml(t: TableDef, id: number, sheet: Sheet): string {
-  const name = (t.name || `Table${id}`).replace(/[^\w.\\]/g, '_').replace(/^(\d)/, '_$1');
+  const name = (t.name || `Table${id}`).replace(/[^\p{L}\p{N}_.\\]/gu, '_').replace(/^(\p{N})/u, '_$1');
   const ncols = t.range.c2 - t.range.c1 + 1;
   const cols = Array.from({ length: ncols }, (_, i) => t.columns[i] || { name: `Column${i + 1}` });
   const names = tableColumnNames(t);

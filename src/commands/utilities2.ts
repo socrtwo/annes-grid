@@ -172,13 +172,15 @@ defTools([
       if (!pairs.length) { toast('The list is empty.'); return; }
       const map = new Map(pairs);
       pairs.sort((x, y) => y[0].length - x[0].length);
+      const insideMap = map;
+      const insideRe = new RegExp(pairs.map(([a]) => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), o.matchCase ? 'g' : 'gi');
       let n = 0;
       app.book.transact('Replace from List', () => {
         for (const x of selCells(app, { existingOnly: true })) {
           const cell = x.cell!; if (cell.f != null || cell.sp != null || !canChange(app.sheet, x.r, x.c)) continue;
           const t = typeof cell.v === 'string' ? cell.v : shownText(app.sheet, x.r, x.c);
           if (o.whole) { const hit = map.get(o.matchCase ? t : t.toLowerCase()); if (hit === undefined) continue; const nv = numOf(hit); s_set(app.sheet, x, nv != null && typeof cell.v === 'number' ? nv : hit); n++; }
-          else { let out = t; for (const [a, b] of pairs) out = out.split(o.matchCase ? a : new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi') as any).join(b); if (out !== t) { s_set(app.sheet, x, out); n++; } }
+          else { /* one pass over the text, so a replacement is never replaced again by a later pair (cat→dog, dog→bird) */ const out = t.replace(insideRe, (m) => insideMap.get(o.matchCase ? m : m.toLowerCase()) ?? m); if (out !== t) { s_set(app.sheet, x, out); n++; } }
         }
       });
       toast(`${plural(n, 'cell')} replaced`);
@@ -697,7 +699,7 @@ defTools([
   },
   {
     id: 'util.cellsToComments', label: 'Make Comments from Cell Values', icon: 'add_comment', tab: U, group: G_OBJECTS, edits: true, kind: 'split', tip: 'Attach each selected cell\'s text as a note to the cell to its left, or to the cell itself', origin: 'ASAP Utilities / Kutools',
-    run: (app, arg?: 'left' | 'self' | 'append') => { const s = app.sheet; let n = 0; for (const x of selCells(app, { existingOnly: true })) { const t = shownText(s, x.r, x.c); if (!t) continue; const c = arg === 'left' ? Math.max(0, x.c - 1) : x.c; const cur = s.comments.get(cellKey(x.r, c)); const text = arg === 'append' && cur ? `${cur.text}\n${t}` : t; setComment(app.book, s, x.r, c, { author: app.prefs.author || 'Author', text, time: Date.now(), note: true }, 'Cells to Comments'); n++; } toast(`${plural(n, 'note')} written`); },
+    run: (app, arg?: 'left' | 'self' | 'append') => { const s = app.sheet; let n = 0; /* one undo step for the whole selection */ app.book.transact('Cells to Comments', () => { for (const x of selCells(app, { existingOnly: true })) { const t = shownText(s, x.r, x.c); if (!t) continue; const c = arg === 'left' ? Math.max(0, x.c - 1) : x.c; const cur = s.comments.get(cellKey(x.r, c)); const text = arg === 'append' && cur ? `${cur.text}\n${t}` : t; setComment(app.book, s, x.r, c, { author: app.prefs.author || 'Author', text, time: Date.now(), note: true }, 'Cells to Comments'); n++; } }); toast(`${plural(n, 'note')} written`); },
     menu: () => [{ id: 'util.cellsToComments', arg: 'self', label: 'As a note on the cell itself' }, { id: 'util.cellsToComments', arg: 'left', label: 'As a note on the cell to the left' }, { id: 'util.cellsToComments', arg: 'append', label: 'Append to the existing note' }],
   },
   {

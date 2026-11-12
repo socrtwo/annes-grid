@@ -228,6 +228,14 @@ export function scan(b: Uint8Array): { segments: Segment[]; multiple: boolean } 
   const starts = [0];
   let cur = segState(b, 0);
   let pos = Math.max(1, cur.guard);
+  // Whether the current JPEG segment has reached its end marker, looked for once per byte range rather than from the
+  // segment start at every later signature (which made a file full of JPEG headers take quadratic time).
+  let eoiFor = -1, eoiSeen = false, eoiFrom = 0;
+  const jpegEnded = (upTo: number): boolean => {
+    if (eoiFor !== cur.start) { eoiFor = cur.start; eoiSeen = false; eoiFrom = cur.start; }
+    if (!eoiSeen && upTo > eoiFrom) { eoiSeen = indexOfBytes(b, [0xff, 0xd9], eoiFrom, upTo) !== -1; eoiFrom = Math.max(eoiFrom, upTo - 1); }
+    return eoiSeen;
+  };
   while (pos < b.length) {
     let hit: { ext: string; sig: number[] } | null = null;
     for (const s of BOUNDARY_SIGS) if (matches(b, pos, s.sig)) { hit = s; break; }
@@ -235,7 +243,7 @@ export function scan(b: Uint8Array): { segments: Segment[]; multiple: boolean } 
       let accept = true;
       if (cur.kind === 'zip') accept = hit.ext === 'zip' ? !!cur.walkClean : !!cur.walkClean || hit.sig.length >= 5;
       else if (cur.kind === 'ole') accept = (pos - cur.start) % 512 === 0 || hit.sig.length >= 6;
-      else if (cur.kind === 'jpg' && hit.ext === 'jpg') accept = indexOfBytes(b, [0xff, 0xd9], cur.start, pos) !== -1;
+      else if (cur.kind === 'jpg' && hit.ext === 'jpg') accept = jpegEnded(pos);
       if (accept) { starts.push(pos); cur = segState(b, pos); pos = Math.max(pos + 1, cur.guard); continue; }
     }
     pos++;

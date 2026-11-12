@@ -353,6 +353,9 @@ function addName(rd: LotusReader, nm: string, sheet: number, c1: number, r1: num
 // ------------------------------------------------------------------------------------------
 // Release 3 and later
 
+/** Release 3 cell records: the fewest bytes each needs (row, sheet and column, then the value). */
+const WK3_CELL_MIN: Record<number, number> = { 0x14: 4, 0x15: 4, 0x16: 4, 0x17: 14, 0x18: 6, 0x19: 4, 0x25: 8, 0x27: 12, 0x28: 4 };
+
 function readWk3(rd: LotusReader, recs: LRec[], guard: (r: LRec, fn: () => void) => void): void {
   // Pass 1: sheet names, so formulas can name other sheets.
   let maxSheet = 0;
@@ -376,6 +379,9 @@ function readWk3(rd: LotusReader, recs: LRec[], guard: (r: LRec, fn: () => void)
   for (const rec of recs) {
     const d = rec.data;
     guard(rec, () => {
+      // A cell record too short to hold its address (and, for numbers, its value) is damaged: it is skipped.
+      const least = WK3_CELL_MIN[rec.op];
+      if (least && d.length < least) { rd.warn(`A damaged record (type 0x${rec.op.toString(16)}) was skipped.`); return; }
       switch (rec.op) {
         case 0x07: { // column widths: sheet, window, 2 bytes, then (column, width) pairs
           if (d.length < 4 || d[1] !== 0) break;

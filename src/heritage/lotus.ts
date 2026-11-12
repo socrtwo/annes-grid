@@ -180,10 +180,12 @@ const call = (name: string, args: string[]): Out => ({ s: `${name}(${args.join('
 const isNum = (n: LNode | undefined): n is { k: 'num'; v: string } => n?.k === 'num';
 /** 1-2-3 offsets count from 0; the target counts from 1. */
 const plus1 = (n: LNode, s: string) => (isNum(n) ? String(+n.v + 1) : n.k === 'bin' || n.k === 'un' ? `(${s})+1` : `${s}+1`);
+/** An argument that is itself an expression, parenthesised so it can take part in a larger one. */
+const par = (n: LNode, s: string) => (n.k === 'bin' || n.k === 'un' ? `(${s})` : s);
 const neg = (n: LNode, s: string) => (isNum(n) ? '-' + n.v : `-(${s})`);
 
 /** Same name and meaning in both languages. */
-const SAME = new Set(('ABS ACOS ASIN ATAN ATAN2 COS SIN TAN EXP LN LOG SQRT INT MOD ROUND ROUNDUP ROUNDDOWN TRUNC PI RAND SUM SUMPRODUCT SUMSQ SUMXMY2 '
+const SAME = new Set(('ABS ACOS ASIN ATAN ATAN2 COS SIN TAN EXP LN LOG SQRT ROUND ROUNDUP ROUNDDOWN TRUNC PI RAND SUM SUMPRODUCT SUMSQ SUMXMY2 '
   + 'IF NOW TODAY DATE TIME DATEVALUE TIMEVALUE DAY MONTH HOUR MINUTE SECOND UPPER LOWER PROPER TRIM EXACT LEFT RIGHT CHAR CODE VALUE N '
   + 'ISNUMBER ISNA NPV SLN SYD DDB VDB ROWS MEDIAN RANK LARGE SMALL PRODUCT EVEN ODD SIGN FACT COMBIN PERMUT DEGREES RADIANS SUMIF COUNTIF '
   + 'SHEETS DATEDIF WORKDAY NETWORKDAYS QUOTIENT GEOMEAN HARMEAN KURT SKEW CLEAN ISBETWEEN WEIGHTAVG SEMEAN REFCONVERT XINDEX').split(' '));
@@ -203,7 +205,7 @@ const DB: Record<string, string> = { DSUM: 'DSUM', DAVG: 'DAVERAGE', DCOUNT: 'DC
 export const LOTUS_FUNCTIONS: string[] = [
   ...SAME, ...Object.keys(RENAME).filter((k) => k !== '@'), ...Object.keys(DB), '@@',
   'TRUE', 'FALSE', 'NA', 'ERR', 'CHOOSE', 'INDEX', 'VLOOKUP', 'HLOOKUP', 'MID', 'FIND', 'REPLACE', 'STRING', 'YEAR', 'WEEKDAY',
-  'PMT', 'PV', 'FV', 'TERM', 'CTERM', 'RATE', 'IRR',
+  'PMT', 'PV', 'FV', 'TERM', 'CTERM', 'RATE', 'IRR', 'INT', 'MOD',
 ].sort();
 
 function fnOut(name: string, nodes: LNode[], a: string[]): Out {
@@ -225,6 +227,10 @@ function fnOut(name: string, nodes: LNode[], a: string[]): Out {
       // Numbers match the largest value not above them; text must match exactly.
       need(3); return call(name, [a[0], a[1], plus1(nodes[2], a[2]), `ISNUMBER(${a[0]})`]);
     case 'MID': need(3); return call('MID', [a[0], plus1(nodes[1], a[1]), a[2]]);
+    // 1-2-3 truncates toward zero, and its remainder takes the sign of the dividend (here INT rounds down and MOD
+    // takes the sign of the divisor).
+    case 'INT': need(1); return call('TRUNC', [a[0]]);
+    case 'MOD': { need(2); const x = par(nodes[0], a[0]), y = par(nodes[1], a[1]); return { s: `${x}-${y}*TRUNC(${x}/${y})`, p: OUT_PREC['-'] }; }
     case 'FIND': need(3); return { s: `FIND(${a[0]},${a[1]},${plus1(nodes[2], a[2])})-1`, p: OUT_PREC['-'] };
     case 'REPLACE': need(4); return call('REPLACE', [a[0], plus1(nodes[1], a[1]), a[2], a[3]]);
     case 'STRING': need(2); return call('FIXED', [a[0], a[1], 'TRUE']);

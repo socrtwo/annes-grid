@@ -79,6 +79,7 @@ export function codepage(cp: number): Decoder {
   // The DOS code pages and Mac OS Roman come from the shared text-encoding module.
   if (cp === 437) return (b) => decodeWith(b, 'cp437');
   if (cp === 850 || cp === 865 || cp === 863 || cp === 860 || cp === 861) return (b) => decodeWith(b, 'cp850');
+  if (cp === 852) return (b) => decodeWith(b, 'cp852');
   if (cp === 10000 || cp === 32768) return (b) => decodeWith(b, 'macintosh');
   const label = WIN_PAGES[cp];
   if (label) {

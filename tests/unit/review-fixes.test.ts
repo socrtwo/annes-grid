@@ -14,6 +14,8 @@ import { parseCreateTable } from '../../src/io/sqlite';
 import { exportOds, importOds } from '../../src/io/ods';
 import { exportXlsx, xlsxSheetNames } from '../../src/io/xlsx-export';
 import { exportCsv, importCsv } from '../../src/io/csv';
+import { decodeWith } from '../../src/io/encoding';
+import { codepage } from '../../src/io/legacy/bin';
 import { splitOdfAddresses } from '../../src/io/ods';
 import { importXlsx } from '../../src/io/xlsx-import';
 
@@ -278,5 +280,22 @@ describe('file formats, second round', () => {
     b.transact('t', () => { b.sheet.set(0, 0, { v: 'x' }); b.sheet.merges.push({ r1: 2, c1: 0, r2: 3, c2: 1 }); });
     const back = await importOds(await (await exportOds(b)).arrayBuffer());
     expect(back.sheet.merges).toEqual([{ r1: 2, c1: 0, r2: 3, c2: 1 }]);
+  });
+});
+
+describe('legacy readers, second round', () => {
+  it('gives 1-2-3 @INT and @MOD their 1-2-3 meaning', () => {
+    const { val } = book({ A1: -2.5 });
+    expect(translateLotus('@INT(A1)')).toBe('TRUNC(A1)');
+    expect(val(translateLotus('@INT(-2.5)'))).toBe(-2);
+    expect(val(translateLotus('@MOD(-7,3)'))).toBe(-1);
+    expect(val(translateLotus('@MOD(7,-3)'))).toBe(1);
+    expect(val(translateLotus('@MOD(7+1,3)'))).toBe(2);
+  });
+  it('decodes the Central European DOS code page', () => {
+    const bytes = new Uint8Array([0x9f, 0x88, 0xa5, 0xa4, 0x41, 0xe7, 0xfd]);
+    expect(decodeWith(bytes, 'cp852')).toBe('čłąĄAšř');
+    expect(codepage(852)(bytes)).toBe('čłąĄAšř');
+    expect(codepage(437)(new Uint8Array([0x43, 0x82, 0x9b, 0xe1]))).toBe('Cé¢ß');
   });
 });

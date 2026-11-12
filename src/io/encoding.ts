@@ -18,13 +18,17 @@
 const CP437_HIGH = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
 const CP850_HIGH = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»░▒▓│┤ÁÂÀ©╣║╗╝¢¥┐└┴┬├─┼ãÃ╚╔╩╦╠═╬¤ðÐÊËÈıÍÎÏ┘┌█▄¦Ì▀ÓßÔÒõÕµþÞÚÛÙýÝ¯´­±‗¾¶§÷¸°¨·¹³²■ ';
 
-const DOS_TABLES: Record<string, string> = { cp437: CP437_HIGH, cp850: CP850_HIGH };
+/** Central European DOS (Latin 2), used by Polish, Czech, Slovak and Hungarian dBASE and Lotus files. */
+const CP852_HIGH = 'ÇüéâäůćçłëŐőîŹÄĆÉĹĺôöĽľŚśÖÜŤťŁ×čáíóúĄąŽžĘę¬źČş«»░▒▓│┤ÁÂĚŞ╣║╗╝Żż┐└┴┬├─┼Ăă╚╔╩╦╠═╬¤đĐĎËďŇÍÎě┘┌█▄ŢŮ▀ÓßÔŃńňŠšŔÚŕŰýÝţ´­˝˛ˇ˘§÷¸°¨˙űŘř■ ';
+
+const DOS_TABLES: Record<string, string> = { cp437: CP437_HIGH, cp850: CP850_HIGH, cp852: CP852_HIGH };
 
 /** Normalizes an encoding label: 'CP-1252' -> 'windows-1252', 'ibm437' -> 'cp437', 'mac' -> 'macintosh'. */
 export function normalizeEncoding(label: string): string {
   const l = label.trim().toLowerCase().replace(/_/g, '-');
   if (/^(cp|ibm|dos)-?437$/.test(l) || l === 'oem-us') return 'cp437';
   if (/^(cp|ibm|dos)-?850$/.test(l)) return 'cp850';
+  if (/^(cp|ibm|dos)-?852$/.test(l)) return 'cp852';
   const w = /^(?:cp|windows|win)-?(125\d)$/.exec(l);
   if (w) return `windows-${w[1]}`;
   if (l === 'mac' || l === 'macroman' || l === 'mac-roman' || l === 'x-mac-roman') return 'macintosh';

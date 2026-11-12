@@ -181,7 +181,7 @@ export function shiftFormula(f: string, dr: number, dc: number): string {
       if (c < 0) return m;
       if (!ac) c += dc;
       if (!ar) r += dr;
-      if (c < 0 || r < 0) return `${pre}#REF!`;
+      if (c < 0 || r < 0 || c > 16383 || r > 1048575) return `${pre}#REF!`;
       return `${pre}${ac}${colName(c)}${ar}${r + 1}`;
     })).join('');
 }

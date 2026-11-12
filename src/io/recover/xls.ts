@@ -30,6 +30,7 @@ import { cellKey, colName, MAX_COLS, MAX_ROWS } from '../../model/address';
 import { BUILTIN_FORMATS } from '../../model/numfmt';
 import { isOle2, readCfb } from './doc97';
 import { cp1252 } from './salvage';
+import { decodeWith } from '../encoding';
 
 export const XLS_ENCRYPTED_MSG = 'This workbook is password-protected (encrypted); Anne\'s Grid cannot decrypt it.';
 
@@ -185,12 +186,17 @@ const CODEPAGES: Record<number, string> = {
 function makeDecoder(cp: number): (b: Uint8Array) => string {
   // Some runtimes decode "windows-1252" as ISO-8859-1; map the 0x80-0x9F range explicitly.
   if (cp === 1252 || cp === 32769 || !CODEPAGES[cp] || cp === 1200) return (b) => { let s = ''; for (const x of b) s += cp1252(x); return s; };
+  // TextDecoder knows none of the DOS code pages but 866: they come from the tables of the text-encoding module
+  // (the Nordic, Portuguese and Canadian pages differ from 850 in a few letters only).
+  if (cp === 437) return (b) => decodeWith(b, 'cp437');
+  if (cp === 852) return (b) => decodeWith(b, 'cp852');
+  if (cp === 850 || (cp >= 860 && cp <= 865 && cp !== 862 && cp !== 864)) return (b) => decodeWith(b, 'cp850');
   const label = CODEPAGES[cp] && cp !== 1200 ? CODEPAGES[cp] : 'windows-1252';
   try {
     const d = new TextDecoder(label);
     return (b) => d.decode(b);
   } catch {
-    return (b) => { let s = ''; for (const x of b) s += String.fromCharCode(x); return s; };
+    return (b) => { let s = ''; for (const x of b) s += cp1252(x); return s; };
   }
 }
 

@@ -59,7 +59,9 @@ function chooseDecoder(sample: Uint8Array, declared?: number): Decoder {
   const pages = [1252, 437, 850, 1251, 866, 1250, 852];
   const script = (cp: number) => ([1251, 866, 855].includes(cp) ? 'cyr' : [1250, 852].includes(cp) ? 'ce' : 'latin');
   let best = declared ?? 1252, bestScore = -Infinity;
-  const declaredScore = declared ? letterScore(codepage(declared)(sample)) : -Infinity;
+  // The declared page gets the same benefit as the others of its script, or a short sample always loses to them.
+  const boost = (sc: number) => (sc > 0 ? sc * 1.1 + 1 : sc);
+  const declaredScore = declared ? boost(letterScore(codepage(declared)(sample))) : -Infinity;
   for (const cp of pages) {
     let sc = letterScore(codepage(cp)(sample));
     // A table that names a code page was written for that script, even when the page itself is wrong.

@@ -65,7 +65,8 @@ function parseFormat(fmt: string): Section[] {
   const hit = cache.get(fmt);
   if (hit) return hit;
   const raw = splitSections(fmt);
-  const sections = raw.map(parseSection);
+  // An empty section among several (0;-0;;@) shows nothing; only a wholly empty format is General.
+  const sections = raw.map((src) => (raw.length > 1 && src.trim() === '' ? { tokens: [], kind: 'number' } as Section : parseSection(src)));
   if (cache.size > 2000) cache.clear();
   cache.set(fmt, sections);
   return sections;
@@ -238,7 +239,8 @@ export function formatGeneral(x: number, width?: number): string {
   const maxLen = Math.max(5, Math.min(11, width ?? 11));
   const ax = Math.abs(x);
   if (ax >= 1e11 || ax < 1e-9) return sci(x, Math.max(0, maxLen - 6));
-  let s = String(+x.toPrecision(10));
+  // Ten significant digits, except that an 11-digit whole number is shown in full.
+  let s = String(+x.toPrecision(ax >= 1e10 ? 11 : 10));
   if (s.includes('e')) s = sci(x, 5);
   if (s.replace('-', '').length > maxLen) {
     const intLen = Math.floor(Math.log10(ax)) + 1;
@@ -439,6 +441,7 @@ function renderDate(sec: Section, x: number, date1904: boolean): string {
       case 'date': out += dateTok(t.v, p, ampm); break;
       case 'digit': out += t.ch === '0' ? '0' : ''; break;
       case 'comma': out += ','; break;
+      case 'dot': out += '.'; break;
       default: out += tokText(t);
     }
   }

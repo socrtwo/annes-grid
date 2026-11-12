@@ -122,6 +122,8 @@ export function shiftCells(sheet: Sheet, axis: Axis, at: number, n: number): voi
         const v = axis === 'row' ? pv.target.r : pv.target.c;
         const nv = v < at ? v : n < 0 && v < at - n ? at : v + n;
         if (axis === 'row') pv.target.r = nv; else pv.target.c = nv;
+        // The area the report last filled moves with it; Refresh clears that area, so a stale one erases other data.
+        if (pv.lastRange) pv.lastRange = adjustRange(pv.lastRange, axis, at, n) ?? undefined;
       }
     }
   }
@@ -201,14 +203,19 @@ export function shiftCells(sheet: Sheet, axis: Axis, at: number, n: number): voi
 }
 
 function adjustTableColumns(t: { range: Range; columns: { name: string }[] }, at: number, n: number): void {
-  const rel = at - t.range.c1;
-  if (rel < 0 || rel > t.columns.length) return;
+  const { c1, c2 } = t.range;
   if (n > 0) {
+    // A column inserted at the table's first column or just past its last one moves or leaves the table; it does not join it.
+    if (at <= c1 || at > c2) return;
     const names = new Set(t.columns.map((c) => c.name.toLowerCase()));
     const add = [];
     for (let i = 0; i < n; i++) { let k = t.columns.length + i + 1, nm = `Column${k}`; while (names.has(nm.toLowerCase())) nm = `Column${++k}`; names.add(nm.toLowerCase()); add.push({ name: nm }); }
-    t.columns.splice(rel, 0, ...add);
-  } else t.columns.splice(rel, -n);
+    t.columns.splice(at - c1, 0, ...add);
+  } else {
+    // Remove exactly the table columns that fall inside the deleted span, wherever the span starts.
+    const lo = Math.max(at, c1), hi = Math.min(at - n - 1, c2);
+    if (lo <= hi) t.columns.splice(lo - c1, hi - lo + 1);
+  }
 }
 
 /**

@@ -382,7 +382,9 @@ export class Workbook {
 
   recordCell(sheet: Sheet, k: number): void {
     const t = this.tx;
-    if (!t || t.sheets.has(sheet.id)) return;
+    // Once the whole book is recorded, undo restores that snapshot; a per-cell image taken after a
+    // structural change would be replayed on top of it at a position that has since moved.
+    if (!t || t.book || t.sheets.has(sheet.id)) return;
     let m = t.cells.get(sheet);
     if (!m) { m = new Map(); t.cells.set(sheet, m); }
     if (!m.has(k)) { const cur = sheet.cells.get(k); m.set(k, cur ? { ...cur } : undefined); }

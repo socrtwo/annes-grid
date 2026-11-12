@@ -86,7 +86,7 @@ export function parseDateTime(text: string, opts: { dmy?: boolean; date1904?: bo
   if (!t) return null;
   let m: RegExpExecArray | null;
   // Time only: 10:30, 10:30:15, 10:30 PM, 10 PM
-  if ((m = /^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}(?:\.\d+)?))?\s*([ap]\.?m?\.?)?$/i.exec(t)) && (m[2] != null || m[4])) {
+  if ((m = /^(\d{1,4})(?::(\d{1,2}))?(?::(\d{1,2}(?:\.\d+)?))?\s*([ap]\.?m?\.?)?$/i.exec(t)) && (m[2] != null || m[4])) {
     let h = +m[1];
     const mi = m[2] != null ? +m[2] : 0, s = m[3] != null ? +m[3] : 0;
     const ap = m[4]?.[0]?.toLowerCase();
@@ -112,7 +112,8 @@ export function parseDateTime(text: string, opts: { dmy?: boolean; date1904?: bo
 }
 
 function validDate(y: number, m: number, d: number): boolean {
-  return m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(y, m);
+  // Dates before 1900 have no serial: they stay text (adding 1900 would silently make 1776 into 3676).
+  return y >= 1900 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(y, m);
 }
 
 function fullYear(y: string): number {
@@ -156,7 +157,7 @@ function parseDatePart(s: string, opts: { dmy?: boolean }): { y: number; m: numb
   if ((m = /^([A-Za-z]{3,9})[-\s,]+(\d{4})$/.exec(s))) {
     const mo = MONTH_LOOKUP[m[1].toLowerCase()];
     if (!mo) return null;
-    return { y: +m[2], m: mo, d: 1, format: 'mmm-yy' };
+    return +m[2] >= 1900 ? { y: +m[2], m: mo, d: 1, format: 'mmm-yy' } : null;
   }
   return null;
 }

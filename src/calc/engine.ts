@@ -857,7 +857,9 @@ function unionOf(a: Range | null, b: Range | null): Range | null {
 const arith = (f: (x: number, y: number) => number) => (a: Scalar, b: Scalar): Scalar => {
   if (a instanceof CellError) return a;
   if (b instanceof CellError) return b;
-  return f(num(a), num(b));
+  // An overflow (1E+308*10, 2^1024) is #NUM! at once, so IFERROR and ISERROR see it.
+  const r = f(num(a), num(b));
+  return typeof r === 'number' && !Number.isFinite(r) ? ERR.num : r;
 };
 
 const cmpOp = (f: (c: number) => boolean) => (a: Scalar, b: Scalar): Scalar => {

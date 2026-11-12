@@ -268,23 +268,37 @@ export class Engine {
 
   /** Iterative calculation for circular references. */
   private iterate(): void {
-    const loop = [...new Set(this.circular)];
+    const loop = [...new Set(this.circular)].filter((fk) => this.info.has(fk));
     const max = this.book.calc.maxIterations, eps = this.book.calc.maxChange;
-    for (let i = 0; i < max; i++) {
+    const valueOf = (fk: FKey) => { const inf = this.info.get(fk)!; return inf.sheet.cells.get(inf.key)?.v; };
+    // The pass that found the loop was the first iteration. In each further one every cell of the loop is worked out
+    // again, reading the value its neighbours had a moment ago (readCell hands back the stored value at the point
+    // where the loop closes), until nothing changes by more than the allowed amount.
+    for (let i = 1; i < max; i++) {
+      const before = loop.map(valueOf);
+      for (const fk of loop) this.dirty.add(fk);
+      for (const fk of loop) if (this.dirty.has(fk)) this.evalFormula(fk, this.info.get(fk)!, true);
       let delta = 0;
-      for (const fk of loop) {
-        const inf = this.info.get(fk);
-        if (!inf) continue;
-        const before = inf.sheet.cells.get(inf.key)?.v;
-        this.dirty.add(fk);
-        this.evalFormula(fk, inf, true);
-        const after = inf.sheet.cells.get(inf.key)?.v;
-        if (typeof before === 'number' && typeof after === 'number') delta = Math.max(delta, Math.abs(after - before));
-        else if (before !== after) delta = Infinity;
-      }
+      loop.forEach((fk, n) => {
+        const a = before[n], b = valueOf(fk);
+        if (typeof a === 'number' && typeof b === 'number') delta = Math.max(delta, Math.abs(b - a));
+        else if (a !== b) delta = Infinity;
+      });
       if (delta <= eps) break;
     }
+    // Formulas outside the loop that read it were worked out from its first pass: they follow the final values.
+    const queue = loop.map((fk) => { const inf = this.info.get(fk)!; return { sheet: inf.sheet, r: keyRow(inf.key), c: keyCol(inf.key) }; });
+    this.propagate(queue);
+    for (const fk of loop) this.dirty.delete(fk);
+    for (const fk of [...this.dirty]) if (this.dirty.has(fk)) this.evalSafely(fk);
     this.circular = [];
+  }
+
+  /** With iterative calculation on, a formula that reads a cell still being worked out gets that cell's last value. */
+  private loopValue(fk: FKey, cell: Cell | undefined): Scalar {
+    let on = false;
+    for (const e of this.evaluating) { if (e === fk) on = true; if (on) this.circular.push(e); }
+    return cell?.v ?? 0;
   }
 
   /** Evaluates a formula from the top level, resolving deep dependency chains without deep recursion. */
@@ -484,7 +498,7 @@ export class Engine {
     const fk = this.fkey(sheet, k);
     let cell = sheet.cells.get(k);
     if (cell?.f != null) {
-      if (this.evaluating.has(fk)) throw new CircularError();
+      if (this.evaluating.has(fk)) { if (this.book.calc.iterative) return this.loopValue(fk, cell); throw new CircularError(); }
       if (this.dirty.has(fk)) {
         if (this.depth > MAX_DEPTH) { this.deferred.push(fk); throw new DeferError(); }
         const inf = this.info.get(fk) || this.track(sheet, k);
@@ -888,7 +902,11 @@ const BINOPS: Record<string, (a: Scalar, b: Scalar) => Scalar> = {
     if (x === 0 && y === 0) return fail(ERR.num);
     if (x === 0 && y < 0) return fail(ERR.div0);
     const r = Math.pow(x, y);
-    return Number.isNaN(r) ? fail(ERR.num) : r;
+    if (!Number.isNaN(r)) return r;
+    // A negative number has a real odd root: (-8)^(1/3) is -2.
+    const root = 1 / y;
+    if (x < 0 && Math.abs(root - Math.round(root)) < 1e-9 && Math.abs(Math.round(root)) % 2 === 1) return -Math.pow(-x, y);
+    return fail(ERR.num);
   }),
   '&': (a, b) => (a instanceof CellError ? a : b instanceof CellError ? b : str(a) + str(b)),
   '=': cmpOp((c) => c === 0),

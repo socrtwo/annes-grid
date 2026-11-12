@@ -222,7 +222,7 @@ function addMonths(start: number, months: number, eom: boolean, ctx: Ctx): numbe
   const total = p.y * 12 + (p.m - 1) + months;
   const y = Math.floor(total / 12), m = total - y * 12 + 1;
   if (y < (d1904(ctx) ? 1904 : 1900) || y > 9999) return fail(ERR.num);
-  const dim = daysInMonth(y, m);
+  const dim = y === 1900 && m === 2 && !d1904(ctx) ? 29 : daysInMonth(y, m);
   const d = eom ? dim : Math.min(p.d, dim);
   const r = ymdSerial(y, m, d, d1904(ctx));
   if (r < 0 || r > MAX_SERIAL) return fail(ERR.num);

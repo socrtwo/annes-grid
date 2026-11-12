@@ -165,7 +165,9 @@ export function str(v: Scalar): string {
 }
 
 export function numToText(n: number): string {
-  if (Number.isInteger(n) && Math.abs(n) < 1e21) return String(n);
+  // Fifteen significant digits, as numbers are stored: a longer whole number is written in E notation.
+  if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
+  if (Math.abs(n) >= 1e15 && Number.isFinite(n)) { const [m, e] = n.toExponential(14).split('e'); return `${m.includes('.') ? m.replace(/\.?0+$/, '') : m}E+${String(+e).padStart(2, '0')}`; }
   const s = String(+n.toPrecision(15));
   if (s.includes('e')) { const [m, e] = s.split('e'); return `${m}E${+e < 0 ? '-' : '+'}${String(Math.abs(+e)).padStart(2, '0')}`; }
   return s;
@@ -255,14 +257,15 @@ export function criteria(c: Scalar): (v: Scalar) => boolean {
   const bl = /^(TRUE|FALSE)$/i.test(rhs) ? rhs.toUpperCase() === 'TRUE' : null;
   if (op === '=' || op === '<>') {
     let test: (v: Scalar) => boolean;
-    if (rhs === '') test = (v) => v == null || v === '';
+    // "=" asks for cells that are truly empty; a criterion of "" alone also takes formulas that return "".
+    if (rhs === '') test = m[1] ? (v) => v == null : (v) => v == null || v === '';
     else if (n != null) test = (v) => (typeof v === 'number' ? v === n : typeof v === 'string' ? parseNumeric(v) === n && v.trim() !== '' : false);
     else if (bl != null) test = (v) => v === bl;
     else if (err) test = (v) => v instanceof CellError && v.code === err;
     else if (/[*?~]/.test(rhs)) { const re = wildcard(rhs); test = (v) => typeof v === 'string' && re.test(v); }
     else { const low = rhs.toLowerCase(); test = (v) => typeof v === 'string' && v.toLowerCase() === low; }
     if (op === '<>') {
-      if (rhs === '') return (v) => !(v == null || v === '');
+      if (rhs === '') return (v) => v != null; // "<>" counts everything that is not empty, as COUNTA does
       return (v) => !test(v);
     }
     return test;

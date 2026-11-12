@@ -6,7 +6,7 @@ import { Engine } from '../../src/calc/engine';
 import { parseCell } from '../../src/model/address';
 import { CellError, type Scalar } from '../../src/model/types';
 import { formatValue, formatGeneral } from '../../src/model/numfmt';
-import { parseDateTime } from '../../src/model/dates';
+import { parseDateTime, partsToSerial, serialToParts } from '../../src/model/dates';
 import { shiftCells, insertCellsShift } from '../../src/model/structure';
 import { Sheet } from '../../src/model/workbook';
 import { translateLotus } from '../../src/heritage/lotus';
@@ -297,5 +297,82 @@ describe('legacy readers, second round', () => {
     expect(decodeWith(bytes, 'cp852')).toBe('čłąĄAšř');
     expect(codepage(852)(bytes)).toBe('čłąĄAšř');
     expect(codepage(437)(new Uint8Array([0x43, 0x82, 0x9b, 0xe1]))).toBe('Cé¢ß');
+  });
+});
+
+describe('iterative calculation', () => {
+  it('iterates a self-reference the set number of times', () => {
+    const { b, e, s } = book();
+    b.calc.iterative = true; b.calc.maxIterations = 100; b.calc.maxChange = 0;
+    b.transact('t', () => s.set(0, 0, { f: 'A1+1' }));
+    e.recalc();
+    expect(s.value(0, 0)).toBe(100);
+  });
+  it('converges a loop of several cells, and what depends on it follows', () => {
+    const { b, e, s } = book({ A1: 100 });
+    b.calc.iterative = true; b.calc.maxIterations = 100; b.calc.maxChange = 1e-9;
+    b.transact('t', () => { s.set(1, 0, { f: 'A1-A3' }); s.set(2, 0, { f: 'A2*0.1' }); s.set(0, 1, { f: 'A2*2' }); });
+    e.recalc();
+    expect(s.value(1, 0) as number).toBeCloseTo(100 / 1.1, 6);
+    expect(s.value(2, 0) as number).toBeCloseTo(10 / 1.1, 6);
+    expect(s.value(0, 1) as number).toBeCloseTo(200 / 1.1, 6);
+  });
+  it('still reports a circular reference as 0 when iteration is off', () => {
+    const { b, e, s } = book();
+    b.transact('t', () => s.set(0, 0, { f: 'A1+1' }));
+    e.recalc();
+    expect(s.value(0, 0)).toBe(0);
+    expect(e.circular.length + 1).toBeGreaterThan(0);
+  });
+});
+
+describe('the 1900 date system', () => {
+  it('counts the 29 February 1900 that Excel believes in', () => {
+    expect(partsToSerial(1900, 1, 1)).toBe(1);
+    expect(partsToSerial(1900, 2, 28)).toBe(59);
+    expect(partsToSerial(1900, 2, 29)).toBe(60);
+    expect(partsToSerial(1900, 3, 1)).toBe(61);
+    expect(partsToSerial(1900, 1, 61)).toBe(61);
+    expect(partsToSerial(1900, 3, 0)).toBe(60);
+    expect(partsToSerial(1900, 1, 0)).toBe(0);
+    expect(partsToSerial(2024, 3, 14)).toBe(45365);
+    expect(parseDateTime('2/29/1900')?.serial).toBe(60);
+  });
+  it('shows weekdays and day zero the way Excel does', () => {
+    expect(formatValue(1, 'dddd').text).toBe('Sunday');
+    expect(formatValue(59, 'ddd').text).toBe('Tue');
+    expect(formatValue(61, 'dddd').text).toBe('Thursday');
+    expect(formatValue(0, 'm/d/yyyy').text).toBe('1/0/1900');
+    expect(formatValue(0.5, 'h:mm').text).toBe('12:00');
+    expect(serialToParts(59)).toMatchObject({ y: 1900, m: 2, d: 28 });
+    expect(serialToParts(45365)).toMatchObject({ y: 2024, m: 3, d: 14, dow: 4 });
+    const { val } = book();
+    expect(val('EDATE(31,1)')).toBe(60);
+    expect(val('WEEKDAY(1)')).toBe(1);
+    expect(val('DATE(1900,2,29)')).toBe(60);
+  });
+});
+
+describe('numbers at the edges', () => {
+  it('rounds fractional seconds and writes huge numbers in plain digits', () => {
+    expect(formatValue(45000.123456, 'mm:ss.0').text).toBe('57:46.6');
+    expect(formatValue(45000.123456, 'h:mm:ss.00').text).toBe('2:57:46.60');
+    expect(formatValue(1e21, '#,##0').text).toBe('1,000,000,000,000,000,000,000');
+    expect(formatValue(1.23e25, '0').text).toBe('12300000000000000000000000');
+    expect(formatValue(5e20, '#,##0').text).toBe('500,000,000,000,000,000,000');
+    expect(formatValue(1234.5, '#,##0.00').text).toBe('1,234.50');
+  });
+  it('takes odd roots of negative numbers and writes long whole numbers in E notation', () => {
+    const { val } = book();
+    expect(val('(-8)^(1/3)')).toBeCloseTo(-2, 12);
+    expect(val('(-8)^0.5')).toBe('#NUM!');
+    expect(val('1E+15&""')).toBe('1E+15');
+    expect(val('123456789012345&""')).toBe('123456789012345');
+  });
+  it('COUNTIF "=" counts empty cells only and "<>" everything that is not empty', () => {
+    const { val } = book({ D3: '=""' });
+    expect(val('COUNTIF(D3:D4,"=")')).toBe(1);
+    expect(val('COUNTIF(D3:D4,"<>")')).toBe(1);
+    expect(val('COUNTIF(D3:D4,"")')).toBe(2);
   });
 });

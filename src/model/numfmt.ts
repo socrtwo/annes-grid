@@ -281,6 +281,14 @@ function renderNumber(sec: Section, x: number, showMinus: boolean): string {
 
 function findLastIndex<T>(a: T[], f: (x: T) => boolean): number { for (let i = a.length - 1; i >= 0; i--) if (f(a[i])) return i; return -1; }
 
+/** toFixed that stays in plain digits for huge numbers: fifteen significant digits, then zeros. */
+function fixedDigits(n: number, d: number): string {
+  if (Math.abs(n) < 1e15) return n.toFixed(d);
+  const [m, e] = Math.abs(n).toExponential(14).split('e');
+  const whole = m.replace('.', '') + '0'.repeat(Math.max(0, +e - 14));
+  return (n < 0 ? '-' : '') + whole + (d > 0 ? '.' + '0'.repeat(d) : '');
+}
+
 function renderFixed(toks: Tok[], val: number, lastDigit: number, scaleCommas: number): string {
   const dotIdx = toks.findIndex((t) => t.t === 'dot');
   const intToks = dotIdx >= 0 ? toks.slice(0, dotIdx) : toks;
@@ -289,7 +297,7 @@ function renderFixed(toks: Tok[], val: number, lastDigit: number, scaleCommas: n
   const grouping = intToks.some((t, k) => t.t === 'comma' && k < (dotIdx >= 0 ? dotIdx : lastDigit + 1) - 0 && intToks.slice(k + 1).some((u) => u.t === 'digit'));
   void scaleCommas;
   const rounded = roundHalfAway(val, fracDigits);
-  let [ip, fp = ''] = rounded.toFixed(fracDigits).split('.');
+  let [ip, fp = ''] = fixedDigits(rounded, fracDigits).split('.');
   if (ip === '0') ip = '';
   // A section with no digit placeholders and no decimal point (e.g. "pos";"neg" or [Red]"x") shows only its literals.
   if (dotIdx < 0 && !intToks.some((t) => t.t === 'digit')) return intToks.map(tokText).join('');
@@ -419,7 +427,9 @@ function bestFraction(x: number, maxDen: number): [number, number] {
 
 function renderDate(sec: Section, x: number, date1904: boolean): string {
   const hasSubSec = sec.tokens.find((t) => t.t === 'date' && t.v.startsWith('.'));
-  const p = serialToParts(hasSubSec ? x : Math.round(x * 86400) / 86400, date1904);
+  // The time is rounded to the smallest unit shown (whole seconds, or the decimals of ss.00), never cut off.
+  const unit = 86400 * 10 ** (hasSubSec && hasSubSec.t === 'date' ? hasSubSec.v.length - 1 : 0);
+  const p = serialToParts(Math.round(x * unit) / unit, date1904);
   const ampm = sec.tokens.some((t) => t.t === 'ampm');
   let out = '';
   for (const t of sec.tokens) {

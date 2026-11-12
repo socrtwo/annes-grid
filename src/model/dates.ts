@@ -22,6 +22,14 @@ export function serialToParts(serial: number, date1904 = false): DateParts {
         const t = timeParts(frac);
         return { y: 1900, m: 2, d: 29, ...t, dow: 3 };
       }
+      // Serial 0 is shown as the zeroth of January 1900 (a time of day with no date), and weekdays before the
+      // phantom day follow the serial, not the real calendar: serial 1 is a Sunday.
+      if (s >= 0 && s < 61) {
+        const day = Math.floor(s), dow = (day + 6) % 7;
+        if (day === 0) return { y: 1900, m: 1, d: 0, ...timeParts(s), dow };
+        const real = serialToPartsReal(s + 1);
+        return { ...real, dow };
+      }
       s += 1; // before the phantom day, serials are one day "late"
     }
     ms = EPOCH_1900 + s * MS_DAY;
@@ -32,6 +40,13 @@ export function serialToParts(serial: number, date1904 = false): DateParts {
   const dayStart = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
   const t = timeParts((ms - dayStart) / MS_DAY);
   return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate(), ...t, dow: dt.getUTCDay() };
+}
+
+function serialToPartsReal(s: number): DateParts {
+  const ms = Math.round(EPOCH_1900 + s * MS_DAY);
+  const dt = new Date(ms);
+  const dayStart = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate(), ...timeParts((ms - dayStart) / MS_DAY), dow: dt.getUTCDay() };
 }
 
 function timeParts(frac: number): { hh: number; mm: number; ss: number; ms: number } {
@@ -48,9 +63,12 @@ export function partsToSerial(y: number, m: number, d: number, date1904 = false)
   if (y >= 0 && y < 1900 && !date1904) y += 1900;
   const ms = Date.UTC(y, m - 1, 1) + (d - 1) * MS_DAY;
   if (date1904) return Math.round((ms - EPOCH_1904) / MS_DAY);
-  let s = Math.round((ms - EPOCH_1900) / MS_DAY);
-  if (s < 61) s -= 1;
-  return s;
+  // The 1900 date system counts a 29 February 1900 that never was (serial 60). Days counted from January or
+  // February 1900 therefore run one behind the real calendar once they pass it: DATE(1900,2,29) is 60 and
+  // DATE(1900,1,61) is 61. Counted back from March 1900 or later, the real day count already agrees.
+  const months = y * 12 + (m - 1), ny = Math.floor(months / 12), nm = months - ny * 12 + 1;
+  if (ny === 1900 && nm <= 2) return (nm === 1 ? 0 : 31) + d;
+  return Math.round((ms - EPOCH_1900) / MS_DAY);
 }
 
 export function timeToSerial(h: number, m: number, s: number): number {
@@ -113,6 +131,7 @@ export function parseDateTime(text: string, opts: { dmy?: boolean; date1904?: bo
 
 function validDate(y: number, m: number, d: number): boolean {
   // Dates before 1900 have no serial: they stay text (adding 1900 would silently make 1776 into 3676).
+  if (y === 1900 && m === 2 && d === 29) return true; // the day the 1900 date system believes in (serial 60)
   return y >= 1900 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(y, m);
 }
 

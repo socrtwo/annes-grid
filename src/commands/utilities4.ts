@@ -9,7 +9,7 @@ import type { Cell, Scalar } from '../model/types';
 import { CellError } from '../model/types';
 import { cellKey, keyRow, keyCol, colName, cellName, rangeName, type Range } from '../model/address';
 import { selRanges, activeRange, activeCell, clipToUsed, rangeToTsv } from './ops';
-import { defTools, U, selCells, selBlock, singleCell, hasContent, sheetProtected, structureLocked, emptySheet, numOf, textOf, plural, report, pickSheets, sheetsByNames, shownText, argOrAsk, writeOut, checkWritable, canChange, changeCells, copyText, saveTextFile, pickFiles, textRows, valueRows, toCsvField, escapeHtml, fileStem, nowStamp, toolLog, writeBlock, addSheetWithRows, HEAD } from './utilShared';
+import { defTools, externalLinkIn, U, selCells, selBlock, singleCell, hasContent, sheetProtected, structureLocked, emptySheet, numOf, textOf, plural, report, pickSheets, sheetsByNames, shownText, argOrAsk, writeOut, checkWritable, canChange, changeCells, copyText, saveTextFile, pickFiles, textRows, valueRows, toCsvField, escapeHtml, fileStem, nowStamp, toolLog, writeBlock, addSheetWithRows, HEAD } from './utilShared';
 import { menuOf } from './utilities';
 import { transformValues } from './tools';
 import { openDialog, toast, promptDialog, choiceDialog, alertDialog, confirmDialog } from '../ui/dialog';
@@ -146,7 +146,7 @@ defTools([
         for (const [k, cell] of s.cells) {
           const addr = cellName(keyRow(k), keyCol(k));
           if (cell.v instanceof CellError) rows.push([s.name, addr, cell.v.code === '#REF!' ? 'Broken reference' : 'Error value', cell.v.code, cell.f != null ? '=' + cell.f : '']);
-          if (cell.f != null) { for (const m of cell.f.replace(/"(?:[^"]|"")*"/g, '').matchAll(/(?:'([^']+)'|([A-Za-z_][\w. ]*))!/g)) { const nm = (m[1] || m[2] || '').toLowerCase(); if (nm && !names.has(nm) && !/^\[/.test(nm)) rows.push([s.name, addr, 'Link to a missing sheet', m[1] || m[2], '=' + cell.f]); } if (/\[[^\]]+\]/.test(cell.f)) rows.push([s.name, addr, 'Link to another workbook', (cell.f.match(/\[[^\]]+\]/) || [''])[0], '=' + cell.f]); }
+          if (cell.f != null) { for (const m of cell.f.replace(/"(?:[^"]|"")*"/g, '').matchAll(/(?:'([^']+)'|([A-Za-z_][\w. ]*))!/g)) { const nm = (m[1] || m[2] || '').toLowerCase(); if (nm && !names.has(nm) && !/^\[/.test(nm)) rows.push([s.name, addr, 'Link to a missing sheet', m[1] || m[2], '=' + cell.f]); } if (externalLinkIn(cell.f)) rows.push([s.name, addr, 'Link to another workbook', externalLinkIn(cell.f), '=' + cell.f]); }
         }
         for (const nc of narrowColumns(s)) rows.push([s.name, colName(nc.c), 'Column too narrow for its numbers (####)', nc.text, '']);
       }

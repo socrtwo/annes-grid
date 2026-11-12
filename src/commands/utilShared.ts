@@ -45,12 +45,13 @@ export function defTools(list: Command[]): void {
 export interface SelCell { r: number; c: number; cell: Cell | undefined }
 
 /** Every distinct cell position of the selection, clipped to the used range; rows hidden by a filter are skipped. */
-export function selCells(app: App, opts: { sheet?: Sheet; existingOnly?: boolean; pad?: number; includeFiltered?: boolean } = {}): SelCell[] {
+export function selCells(app: App, opts: { sheet?: Sheet; existingOnly?: boolean; pad?: number; includeFiltered?: boolean; /** For tools that fill: every selected cell, used or not (whole rows and columns still stop at the data). */ fill?: boolean } = {}): SelCell[] {
   const sheet = opts.sheet || app.sheet;
   const out: SelCell[] = [];
   const seen = new Set<number>();
   for (const rg0 of selRanges(app)) {
-    const rg = clipToUsed(sheet, rg0, opts.pad || 0);
+    const bounded = rg0.r2 - rg0.r1 <= 100000 && rg0.c2 - rg0.c1 <= 1000;
+    const rg = opts.fill && bounded ? rg0 : clipToUsed(sheet, rg0, opts.pad || 0);
     for (let r = rg.r1; r <= rg.r2; r++) {
       if (!opts.includeFiltered && sheet.hiddenRows.has(r) && sheet.filter) continue;
       for (let c = rg.c1; c <= rg.c2; c++) {
@@ -153,6 +154,15 @@ export function colIsBlank(s: Sheet, c: number, r1 = 0, r2 = MAX_ROWS - 1): bool
 
 // --------------------------------------------------------------------------------------------
 // Protection and structure
+
+/**
+ * The workbook a formula links to ([Book.xlsx] in [Book.xlsx]Sheet1!A1), or null. Brackets inside text and
+ * the brackets of a table reference (Table1[Qty]) are not links: a link's bracket is followed by a sheet name and "!".
+ */
+export function externalLinkIn(formula: string): string | null {
+  const m = /(?:^|[^\w\]])'?(\[[^\[\]]+\])[^!'\[\]]*'?!/.exec(formula.replace(/"(?:[^"]|"")*"/g, '""'));
+  return m ? m[1] : null;
+}
 
 export function sheetProtected(app: App, action: string, sheet: Sheet = app.sheet): boolean {
   if (sheet.protection.on && !sheet.protection.allow.includes(action)) { toast(`The sheet "${sheet.name}" is protected. Unprotect it (Review ▸ Protect Sheet) to make this change.`); return true; }

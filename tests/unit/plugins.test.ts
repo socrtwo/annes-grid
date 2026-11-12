@@ -14,7 +14,7 @@ import { applyNumOp, convertUnit, toBase, fromBase, insertAt, removeByPosition, 
 import { decodeEntities, encodeEntities, stripTags, urlDecode, urlParts, htmlTable } from '../../src/commands/utilities4';
 import { prettyFormula, toHalfWidth, toFullWidth, chemicalRuns, missingNumbers, combinations, mergeTables, splitName, lookupFormula, rowPasses, encryptText, decryptText, runSql } from '../../src/commands/plus';
 import { soundex, metaphoneKey, parseGedcomDate, gedcomRange, ymdCell, ymdText, ageBetween, julianToGregorian, gregorianToJulian, quakerMonth, surnameFirst, titleCase, smartPunctuation, straightPunctuation, fractionGlyphs, readingEase, isbnInfo, luhnValid, slugify, amortization, agingBucket, benford, fiscalYear, fingerprint, clusterValues, iqrOutliers, crc32, base64Encode, base64Decode, easter, usHolidays, weekNumberIso, dmsToDecimal, decimalToDms, haversineKm, bearingDeg, compassPoint } from '../../src/commands/extras';
-import { naturalCompare, mergeSpans, selCells } from '../../src/commands/utilShared';
+import { naturalCompare, mergeSpans, selCells, externalLinkIn } from '../../src/commands/utilShared';
 
 /** App stand-in with enough of the grid and shell for the plug-in tab commands to run headless. */
 function fakeApp() {
@@ -594,5 +594,100 @@ describe('review fixes: undo and copies', () => {
     expect(fromBase('0b101', 2)).toBe(5);
     const b = benford([0.25, 0.31, 0.5, 20.5, 100, 3]);
     expect(b.map((x) => x.count)).toEqual([1, 2, 2, 0, 1, 0, 0, 0, 0]);
+  });
+});
+
+describe('review fixes: filtered lists, protection and tools', () => {
+  function filtered() {
+    const f = fakeApp();
+    const rows = [['k', 'v'], ['a', 1], ['b', 2], ['a', 3], ['b', 4], ['a', 5]];
+    rows.forEach((row, r) => { f.put(`A${r + 1}`, row[0]); f.put(`B${r + 1}`, row[1]); });
+    const s = f.book.sheet;
+    s.filter = { range: { r1: 0, c1: 0, r2: 5, c2: 1 }, columns: { 0: { values: ['a'] } as any } };
+    s.hiddenRows = new Set([2, 4]);
+    return f;
+  }
+  it('Clear Contents leaves rows hidden by the filter alone', async () => {
+    const { app, get, select } = filtered();
+    select('B2:B6');
+    await app.exec('edit.clearContents');
+    expect(['B2', 'B3', 'B4', 'B5', 'B6'].map((a) => get(a) ?? null)).toEqual([null, 2, null, 4, null]);
+  });
+  it('Delete Rows removes only the rows that are showing', async () => {
+    const { app, book, get } = filtered();
+    app.grid.selectRows(1, 5);
+    await app.exec('cells.deleteRows');
+    expect(['A1', 'A2', 'A3', 'A4'].map((a) => get(a) ?? null)).toEqual(['k', 'b', 'b', null]);
+    expect(['B2', 'B3'].map((a) => get(a))).toEqual([2, 4]);
+    book.undo();
+    expect(get('A6')).toBe('a');
+  });
+  it('refuses to unlock or overwrite cells on a protected sheet', async () => {
+    const { app, book, put, get, select } = fakeApp();
+    put('A1', 'secret');
+    book.sheet.protection = { on: true, allow: ['selectLocked', 'selectUnlocked'] } as any;
+    select('A1');
+    await app.exec('util.unlockSelection');
+    expect(book.sheet.styleOf(0, 0).locked).not.toBe(false);
+    await app.exec('plus.insertRandomPassword');
+    await app.exec('plus.batchCheckboxes');
+    expect(get('A1')).toBe('secret');
+  });
+  it('encrypts and decrypts without changing values or types', async () => {
+    const { app, book, put, cell, select } = fakeApp();
+    put('A1', 3.14159); put('A2', '00123'); put('A3', 0.1 + 0.2); put('A4', true); put('A5', '=1+1'); put('A6', 45000.75);
+    book.transact('f', () => book.sheet.patch(0, 0, { s: book.derivedStyle(0, { numFmt: '0.00' }) }));
+    select('A1:A6');
+    await app.exec('plus.encryptCells', { password: 'pw' });
+    expect(typeof cell('A1')!.v).toBe('string');
+    expect(String(cell('A1')!.v)).not.toContain('3.14');
+    await app.exec('plus.decryptCells', { password: 'pw' });
+    expect(cell('A1')!.v).toBe(3.14159);
+    expect(cell('A2')!.v).toBe('00123');
+    expect(cell('A3')!.v).toBe(0.1 + 0.2);
+    expect(cell('A4')!.v).toBe(true);
+    expect(cell('A5')!.f).toBe('1+1');
+    expect(cell('A6')!.v).toBe(45000.75);
+    expect(book.sheet.styleOf(0, 0).numFmt).toBe('0.00');
+  });
+  it('tells a link to another workbook from a table reference or bracketed text', () => {
+    expect(externalLinkIn('SUM(Table1[Qty])')).toBeNull();
+    expect(externalLinkIn('"see [1]"&A2')).toBeNull();
+    expect(externalLinkIn('Table1[[#Totals],[Qty]]+1')).toBeNull();
+    expect(externalLinkIn('[Book.xlsx]Sheet1!A1*2')).toBe('[Book.xlsx]');
+    expect(externalLinkIn("SUM('[My Book.xlsx]Data'!A1:A3)")).toBe('[My Book.xlsx]');
+  });
+  it('stores numbers as text in full and keeps leading zeros when stripping characters', async () => {
+    const { app, put, get, select } = fakeApp();
+    put('A1', 1234567890123456); put('A2', 123456789.123456); put('A3', 'ZIP: 02134'); put('A4', 'Room 12 - A');
+    select('A1:A2');
+    await app.exec('util.numbersToText');
+    expect(get('A1')).toBe('1234567890123456');
+    expect(get('A2')).toBe('123456789.123456');
+    select('A3:A4');
+    await app.exec('util.keepOnly', { what: 'digits' });
+    expect(get('A3')).toBe('02134');
+    expect(get('A4')).toBe('12-');
+  });
+  it('fills every selected cell, also beyond the used range', async () => {
+    const { app, put, get, select } = fakeApp();
+    put('A1', 1);
+    select('D5:E10');
+    await app.exec('util.fillToday');
+    expect(typeof get('D5')).toBe('number');
+    expect(typeof get('E10')).toBe('number');
+    select('G2:G4');
+    await app.exec('plus.batchCheckboxes');
+    expect(['G2', 'G3', 'G4'].map((a) => get(a))).toEqual([false, false, false]);
+  });
+  it('keeps a sheet of the user called index when making a sheet index', async () => {
+    const { app, book, put } = fakeApp();
+    book.transact('n', () => { book.sheets.push(new Sheet(book, 'index')); });
+    put('A1', 'mine', book.sheets[1]);
+    await app.exec('util.sheetIndex');
+    expect(book.sheets.some((s) => s.name === 'index' && s.value(0, 0) === 'mine')).toBe(true);
+    const n = book.sheets.length;
+    await app.exec('util.sheetIndex');
+    expect(book.sheets.length).toBe(n);
   });
 });

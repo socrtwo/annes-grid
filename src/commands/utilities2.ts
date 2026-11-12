@@ -320,7 +320,7 @@ defTools([
       const s = app.sheet; const { parseInput } = await import('./ops');
       let n = 0;
       app.book.transact('Fill Selection', () => {
-        for (const x of selCells(app, { pad: Math.max(rg.r2 - rg.r1, rg.c2 - rg.c1) + 1 })) {
+        for (const x of selCells(app, { fill: true })) {
           if (x.r > rg.r2 || x.c > rg.c2) continue;
           if (o.blanksOnly && hasContent(x.cell)) continue;
           if (!canChange(s, x.r, x.c)) continue;
@@ -361,8 +361,8 @@ defTools([
       app.grid.select(rg.r1, rg.c1, { range: target });
     },
   },
-  { id: 'util.fillToday', label: 'Fill with Today\'s Date', icon: 'today', tab: U, group: G_FILL, edits: true, tip: 'The current date as a fixed value (not a formula) in every selected cell', origin: 'ASAP Utilities', run: (app) => { const rg = fillTarget(app); if (!rg || !checkWritable(app, [rg])) return; const d = new Date(); const serial = Math.floor(jsDateToSerial(new Date(d.getFullYear(), d.getMonth(), d.getDate()), app.book.calc.date1904)); app.book.transact('Fill Date', () => { for (const x of selCells(app, { pad: 1 })) if (x.r <= rg.r2 && x.c <= rg.c2) writeOut(app.sheet, x.r, x.c, { v: serial, style: { numFmt: 'yyyy-mm-dd' } }); }); } },
-  { id: 'util.fillNow', label: 'Fill with the Current Date and Time', icon: 'schedule', tab: U, group: G_FILL, edits: true, run: (app) => { const rg = fillTarget(app); if (!rg || !checkWritable(app, [rg])) return; const serial = jsDateToSerial(new Date(), app.book.calc.date1904); app.book.transact('Fill Date and Time', () => { for (const x of selCells(app, { pad: 1 })) if (x.r <= rg.r2 && x.c <= rg.c2) writeOut(app.sheet, x.r, x.c, { v: serial, style: { numFmt: 'yyyy-mm-dd hh:mm' } }); }); } },
+  { id: 'util.fillToday', label: 'Fill with Today\'s Date', icon: 'today', tab: U, group: G_FILL, edits: true, tip: 'The current date as a fixed value (not a formula) in every selected cell', origin: 'ASAP Utilities', run: (app) => { const rg = fillTarget(app); if (!rg || !checkWritable(app, [rg])) return; const d = new Date(); const serial = Math.floor(jsDateToSerial(new Date(d.getFullYear(), d.getMonth(), d.getDate()), app.book.calc.date1904)); app.book.transact('Fill Date', () => { for (const x of selCells(app, { fill: true })) if (x.r <= rg.r2 && x.c <= rg.c2) writeOut(app.sheet, x.r, x.c, { v: serial, style: { numFmt: 'yyyy-mm-dd' } }); }); } },
+  { id: 'util.fillNow', label: 'Fill with the Current Date and Time', icon: 'schedule', tab: U, group: G_FILL, edits: true, run: (app) => { const rg = fillTarget(app); if (!rg || !checkWritable(app, [rg])) return; const serial = jsDateToSerial(new Date(), app.book.calc.date1904); app.book.transact('Fill Date and Time', () => { for (const x of selCells(app, { fill: true })) if (x.r <= rg.r2 && x.c <= rg.c2) writeOut(app.sheet, x.r, x.c, { v: serial, style: { numFmt: 'yyyy-mm-dd hh:mm' } }); }); } },
   {
     id: 'util.fillCounts', label: 'Fill the Next Column with Occurrence Counts', icon: 'tag', tab: U, group: G_FILL, edits: true, tip: 'Beside each selected value, how many times it occurs in the selection (a COUNTIF without the formula)', origin: 'ASAP Utilities',
     run: (app) => { const s = app.sheet; const rg = clipToUsed(s, activeRange(app)); const target = { r1: rg.r1, r2: rg.r2, c1: rg.c2 + 1, c2: rg.c2 + 1 }; if (!checkWritable(app, [target])) return; const counts = new Map<string, number>(); for (let r = rg.r1; r <= rg.r2; r++) { const k = shownText(s, r, rg.c1).toLowerCase(); if (k) counts.set(k, (counts.get(k) || 0) + 1); } app.book.transact('Occurrence Counts', () => { for (let r = rg.r1; r <= rg.r2; r++) { const k = shownText(s, r, rg.c1).toLowerCase(); if (k) writeOut(s, r, target.c1, counts.get(k) || 0); } }); },
@@ -637,7 +637,7 @@ defTools([
         }
         out.push(row);
       }
-      app.book.transact('Combine Rows', () => { for (let r = first; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) { const cur = s.get(r, c); s.set(r, c, cur?.s ? { s: cur.s } : undefined); } writeBlock(s, first, rg.c1, out); const extra = rg.r2 - first + 1 - out.length; if (extra > 0 && !sheetProtected(app, 'deleteRows')) deleteRowSpans(s, [[first + out.length, rg.r2]]); });
+      app.book.transact('Combine Rows', () => { for (let r = first; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) { const cur = s.get(r, c); s.set(r, c, cur?.s ? { s: cur.s } : undefined); } writeBlock(s, first, rg.c1, out); /* the rows left over are cleared, not deleted: deleting sheet rows would take data beside the selection with them */ const spare: [number, number][] = []; for (let r = rg.r2; r >= first + out.length; r--) if (rowIsBlank(s, r)) spare.push([r, r]); if (spare.length && !app.sheet.protection.on) deleteRowSpans(s, spare); });
       app.grid.updateExtent(); app.grid.layout();
       toast(`${plural(rg.r2 - first + 1, 'row')} combined into ${out.length}`);
     },

@@ -11,7 +11,7 @@ import { mapRefs, shiftFormula, tokenize } from '../calc/parser';
 import { serialToParts, partsToSerial, daysInMonth, DAYS, MONTHS } from '../model/dates';
 import { isDateFormat } from '../model/numfmt';
 import { selRanges, activeRange, activeCell, clipToUsed } from './ops';
-import { defTools, U, selCells, selBlock, singleCell, hasContent, selectHits, sheetProtected, emptySheet, numOf, textOf, plural, report, shownText, argOrAsk, columnChoices, headerGuess, writeOut, checkWritable, canChange, changeCells, patchStyle, movedCell, blockOf, copyText, toCsvField } from './utilShared';
+import { defTools, externalLinkIn, U, selCells, selBlock, singleCell, hasContent, selectHits, sheetProtected, emptySheet, numOf, textOf, plural, report, shownText, argOrAsk, columnChoices, headerGuess, writeOut, checkWritable, canChange, changeCells, patchStyle, movedCell, blockOf, copyText, toCsvField } from './utilShared';
 import { menuOf, cellMatches, findMatching, type SelectCriteria } from './utilities';
 import { transformValues, textToNumber, numberToWords, toRoman, fromRoman } from './tools';
 import { openDialog, toast, promptDialog, choiceDialog } from '../ui/dialog';
@@ -227,6 +227,15 @@ export function convertUnit(v: number, from: string, to: string): number | null 
   return null;
 }
 
+/** A number as the text to store: its display text when it has a format of its own, otherwise every digit (never 1.23457E+15). */
+function numberAsText(app: App, v: number, r: number, c: number): string {
+  const fmt = app.sheet.styleOf(r, c).numFmt;
+  if (fmt && fmt !== 'General' && fmt !== '@') return shownText(app.sheet, r, c);
+  if (Number.isSafeInteger(v)) return String(v);
+  const s = String(+v.toPrecision(15));
+  return /e/i.test(s) ? (Math.abs(v) < 1e21 ? v.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 }) : shownText(app.sheet, r, c)) : s;
+}
+
 export function toBase(n: number, base: number): string { return Math.trunc(n).toString(base).toUpperCase(); }
 export function fromBase(s: string, base: number): number | null { const t = s.trim().replace(base === 16 ? /^0[xX]/ : base === 2 ? /^0[bB]/ : base === 8 ? /^0[oO]/ : /^(?!)/, ''); if (!t) return null; const n = parseInt(t, base); if (isNaN(n) || n < 0) return null; return n.toString(base).toUpperCase() === t.toUpperCase().replace(/^0+(?=.)/, '') ? n : null; }
 
@@ -246,7 +255,7 @@ defTools([
   { id: 'util.percentToFraction', label: 'Divide by 100 (Percent Points to Fractions)', icon: 'percent', tab: U, group: G_NUMBERS, edits: true, tip: '45 becomes 0.45 and is formatted as a percent', run: (app) => { numberOperation(app, 'percentOf', 0, false, 'To Fractions'); patchStyle(app, 'Percent Format', { numFmt: '0.00%' }, { onlyExisting: true }); } },
   {
     id: 'util.numbersToText', label: 'Store Numbers as Text', icon: 'text_fields', tab: U, group: G_NUMBERS, edits: true, tip: 'Keep the numbers but store them as text (leading zeros, IDs, ZIP codes), with a Text number format', origin: 'ASAP Utilities / Kutools (Convert between Text and Number)',
-    run: (app) => { changeCells(app, 'Numbers to Text', (cell, r, c) => (typeof cell.v === 'number' ? { ...cell, v: shownText(app.sheet, r, c), s: app.book.derivedStyle(cell.s ?? 0, { numFmt: '@' }) } : undefined)); },
+    run: (app) => { changeCells(app, 'Numbers to Text', (cell, r, c) => (typeof cell.v === 'number' ? { ...cell, v: numberAsText(app, cell.v, r, c), s: app.book.derivedStyle(cell.s ?? 0, { numFmt: '@' }) } : undefined)); },
   },
   {
     id: 'util.padZeros', label: 'Pad with Leading Zeros…', icon: '123', tab: U, group: G_NUMBERS, edits: true, popular: true, tip: 'Make every value the same width by adding zeros in front (00042), as text or as a number format', keywords: 'leading zeros pad width fixed length', origin: 'ASAP Utilities / Kutools',
@@ -405,7 +414,7 @@ defTools([
     run: async (app, arg?: { what: 'digits' | 'letters' | 'alnum' | 'custom'; chars?: string }) => {
       const o = await argOrAsk(arg, async () => { const r = await openDialog({ title: 'Keep Only', fields: [{ key: 'what', label: 'Keep', type: 'radio', value: 'digits', options: [{ value: 'digits', label: 'Digits (and . , -)' }, { value: 'letters', label: 'Letters and spaces' }, { value: 'alnum', label: 'Letters, digits and spaces' }, { value: 'custom', label: 'These characters:' }] }, { key: 'chars', label: 'Characters', type: 'text', value: '', visibleIf: (v) => v.what === 'custom' }] }); return r ? { what: r.what, chars: r.chars } : null; });
       if (!o) return;
-      transformValues(app, 'Keep Only', (v) => { const out = keepOnly(String(v), o.what, o.chars); if (o.what === 'digits') { const n = textToNumber(out); return n != null && out !== '' ? n : out; } return out; }, { numbersToo: false });
+      transformValues(app, 'Keep Only', (v) => { const out = keepOnly(String(v), o.what, o.chars); if (o.what === 'digits' && /^-?(0|[1-9]\d*)(\.\d+)?$/.test(out)) return Number(out); return out; }, { numbersToo: false });
     },
   },
   {
@@ -528,7 +537,7 @@ defTools([
   { id: 'util.formulasToValuesBook', label: 'Convert All Formulas in the Workbook to Values', icon: 'functions', tab: U, group: G_FORMULAS, edits: true, origin: 'ASAP Utilities', run: async (app, arg) => { const { confirmDialog } = await import('../ui/dialog'); if (arg === undefined && !(await confirmDialog('Formulas to Values', 'Replace every formula on every sheet with its current result? This can be undone.', 'Convert'))) return; let n = 0; app.book.transact('Formulas to Values', () => { for (const s of app.book.sheets) for (const [k, cell] of [...s.cells]) { if (cell.f == null && cell.sp == null) continue; const next: Cell = { ...(cell.s ? { s: cell.s } : {}), ...(cell.v != null ? { v: cell.v } : {}) }; s.set(keyRow(k), keyCol(k), next.v == null && !next.s ? undefined : next); n++; } }); toast(`${plural(n, 'formula')} converted`); } },
   {
     id: 'util.breakExternalLinks', label: 'Break Links to Other Workbooks', icon: 'link_off', tab: U, group: G_FORMULAS, edits: true, tip: 'Replace every formula that refers to another workbook ([Book.xlsx]Sheet!A1) with its last value', origin: 'ASAP Utilities (Remove all external links)',
-    run: (app) => { let n = 0; app.book.transact('Break External Links', () => { for (const s of app.book.sheets) for (const [k, cell] of [...s.cells]) { if (cell.f == null || !/\[[^\]]+\]/.test(cell.f.replace(/"(?:[^"]|"")*"/g, ''))) continue; const next: Cell = { ...(cell.s ? { s: cell.s } : {}), ...(cell.v != null ? { v: cell.v } : {}) }; s.set(keyRow(k), keyCol(k), next.v == null && !next.s ? undefined : next); n++; } }); toast(n ? `${plural(n, 'external link')} replaced by values` : 'No links to other workbooks.'); },
+    run: (app) => { let n = 0; app.book.transact('Break External Links', () => { for (const s of app.book.sheets) for (const [k, cell] of [...s.cells]) { if (cell.f == null || !externalLinkIn(cell.f)) continue; const next: Cell = { ...(cell.s ? { s: cell.s } : {}), ...(cell.v != null ? { v: cell.v } : {}) }; s.set(keyRow(k), keyCol(k), next.v == null && !next.s ? undefined : next); n++; } }); toast(n ? `${plural(n, 'external link')} replaced by values` : 'No links to other workbooks.'); },
   },
   {
     id: 'util.formulasReport', label: 'List All Formulas', icon: 'list_alt', tab: U, group: G_FORMULAS, edits: true, popular: true, tip: 'A sheet with every formula in the workbook (or the selection): sheet, cell, formula and current value', origin: 'ASAP Utilities / Kutools',

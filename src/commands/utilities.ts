@@ -480,6 +480,8 @@ function addSheet(app: App, name: string, after: number): Sheet {
   return s;
 }
 
+const INDEX_MARK = 'QlSheetIndex';
+
 /** A sheet's content for a copy: without its id, so the copy keeps its own (undo finds a sheet by id). */
 function copyJSON(src: Sheet): any { const j: any = src.toJSON(); delete j.id; return j; }
 
@@ -663,12 +665,13 @@ defTools([
     run: (app) => {
       if (structureLocked(app)) return;
       const book = app.book;
-      const sheets = book.sheets.filter((s) => s.name !== 'Index');
+      // Only an index this tool made earlier is replaced; a sheet of the user's that happens to be called Index is kept and listed.
+      const sheets = book.sheets.filter((s) => s.codeName !== INDEX_MARK);
       book.transact('Sheet Index', () => {
         book.recordBook();
-        const old = book.sheetByName('Index');
-        if (old) book.sheets = book.sheets.filter((s) => s !== old);
-        const idx = new Sheet(book, 'Index');
+        book.sheets = book.sheets.filter((s) => s.codeName !== INDEX_MARK);
+        const idx = new Sheet(book, uniqueSheetName(book, 'Index'));
+        idx.codeName = INDEX_MARK;
         book.sheets.unshift(idx);
         const head = ['Sheet', '#', 'Visibility', 'Used range', 'Rows', 'Columns', 'Cells'];
         head.forEach((t, j) => writeOut(idx, 0, j, { v: t, style: HEAD }));

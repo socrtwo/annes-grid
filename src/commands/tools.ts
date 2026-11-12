@@ -11,7 +11,7 @@ import type { App } from '../app';
 import { Sheet, type Workbook } from '../model/workbook';
 import type { Cell, CellStyle, Scalar, CFRule, ChartDef } from '../model/types';
 import { CellError } from '../model/types';
-import { cellKey, colName, cellName, rangeName, type Range } from '../model/address';
+import { MAX_COLS, MAX_ROWS, cellKey, colName, cellName, rangeName, type Range } from '../model/address';
 import { selRanges, activeRange, activeCell, clipToUsed, dataRegion, hasHeaderRow, cellText, isWholeCols } from './ops';
 import { parseNumberInput } from '../model/numfmt';
 import { partsToSerial, daysInMonth, serialToParts, MONTHS, DAYS, timeToSerial } from '../model/dates';
@@ -1781,7 +1781,8 @@ async function sequenceCmd(app: App, arg?: { kind: string; start?: string; step?
   const opt = o!;
   const s = app.sheet;
   const { r: r0, c: c0 } = activeCell(app);
-  const count = Math.max(1, Math.min(100000, Number(opt.count) || 10));
+  // Never past the last column or row (a column index past the end would land in the next row).
+  const count = Math.max(1, Math.min(100000, Number(opt.count) || 10, opt.dir === 'right' ? MAX_COLS - c0 : MAX_ROWS - r0));
   const step = Number(opt.step ?? 1) || 1;
   const rg = opt.dir === 'right' ? { r1: r0, c1: c0, r2: r0, c2: c0 + count - 1 } : { r1: r0, c1: c0, r2: r0 + count - 1, c2: c0 };
   if (!checkWritable(app, [rg]) || !(await confirmOverwrite(s, rg))) return;
